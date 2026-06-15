@@ -1,0 +1,55 @@
+export type TokenActivation = "active" | "ready" | "pending";
+
+export type PortfolioToken = {
+  symbol: string;
+  label: string;
+  balanceUsd: number;
+  activation: TokenActivation;
+  color: string;
+};
+
+export const mockPortfolioTokens: PortfolioToken[] = [
+  {
+    symbol: "USDC",
+    label: "USD Coin",
+    balanceUsd: 10,
+    activation: "active",
+    color: "#2775CA",
+  },
+  {
+    symbol: "USDT",
+    label: "Tether USD",
+    balanceUsd: 30,
+    activation: "ready",
+    color: "#26A17B",
+  },
+  {
+    symbol: "ETH",
+    label: "WETH on Celo",
+    balanceUsd: 50,
+    activation: "ready",
+    color: "#627EEA",
+  },
+  {
+    symbol: "WBTC",
+    label: "Wrapped Bitcoin",
+    balanceUsd: 12,
+    activation: "ready",
+    color: "#F7931A",
+  },
+];
+
+export const purchasePreview = {
+  copAmount: "200,000",
+  feeLabel: "1.5% · $0.79",
+  slippageLabel: "0.3%",
+  activationCapUsd: 450,
+};
+
+export function formatUsd(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(value);
+}

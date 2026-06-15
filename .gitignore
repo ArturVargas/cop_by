@@ -6,6 +6,7 @@ node_modules/
 .next/
 dist/
 build/
+out/
 
 # Environment variables
 .env
@@ -98,3 +99,15 @@ Thumbs.db
 
 # Turbo
 .turbo
+
+# Hardhat
+artifacts/
+cache/
+typechain-types/
+
+# Deployment platforms
+.vercel/
+.netlify/
+
+# Local certificates and keys
+*.pem
