@@ -41,6 +41,8 @@ export const mockPortfolioTokens: PortfolioToken[] = [
 
 export const purchasePreview = {
   copAmount: "200,000",
+  exchangeRateLabel: "1 USD = 3,810 COPm",
+  inputUsdLabel: "Equivale a $52.50 USD aprox.",
   feeLabel: "1.5% · $0.79",
   slippageLabel: "0.3%",
   activationCapUsd: 450,

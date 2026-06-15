@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   ArrowLeftRight,
   Check,
@@ -8,8 +9,6 @@ import {
   ChevronRight,
   ChevronUp,
   GripVertical,
-  HelpCircle,
-  Settings,
   ShieldCheck,
 } from "lucide-react";
 
@@ -38,13 +37,31 @@ export default function Home() {
   const pendingTokens = tokens.filter((token) => token.activation !== "active");
   const allActive = pendingTokens.length === 0;
 
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [step]);
+
   const moveToken = (index: number, direction: -1 | 1) => {
     const nextIndex = index + direction;
     if (nextIndex < 0 || nextIndex >= tokens.length) return;
 
+    reorderToken(index, nextIndex);
+  };
+
+  const reorderToken = (fromIndex: number, toIndex: number) => {
+    if (
+      fromIndex === toIndex ||
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= tokens.length ||
+      toIndex >= tokens.length
+    ) {
+      return;
+    }
+
     const updated = [...tokens];
-    const [item] = updated.splice(index, 1);
-    updated.splice(nextIndex, 0, item);
+    const [item] = updated.splice(fromIndex, 1);
+    updated.splice(toIndex, 0, item);
     setTokens(updated);
   };
 
@@ -69,29 +86,9 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-[calc(100vh-4rem)] bg-[#F7F8F5] text-[#17211B]">
-      <section className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-md flex-col px-4 py-3 sm:max-w-lg sm:py-6 md:max-w-2xl">
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase text-[#66736B]">
-              COPm
-            </p>
-            <h1 className="text-xl font-semibold">Pesos digitales</h1>
-          </div>
-          <button
-            type="button"
-            aria-label={step === 2 ? "Configurar" : "Ayuda"}
-            className="grid h-10 w-10 place-items-center rounded-full border border-[#DDE4DC] bg-white text-[#66736B]"
-          >
-            {step === 2 ? (
-              <Settings className="h-5 w-5" />
-            ) : (
-              <HelpCircle className="h-5 w-5" />
-            )}
-          </button>
-        </div>
-
-        <div className="mb-4 grid grid-cols-3 gap-2">
+    <main className="min-h-[calc(100vh-3rem)] bg-[#F7F8F5] text-[#17211B]">
+      <section className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-md flex-col px-4 py-3 sm:max-w-lg sm:py-5 md:max-w-2xl">
+        <div className="mb-3 grid grid-cols-3 gap-2">
           {steps.map((label, index) => (
             <button
               key={label}
@@ -109,6 +106,7 @@ export default function Home() {
           <TokenOrderScreen
             tokens={tokens}
             onMove={moveToken}
+            onReorder={reorderToken}
             onContinue={() => setStep(1)}
           />
         )}
@@ -141,33 +139,115 @@ export default function Home() {
 function TokenOrderScreen({
   tokens,
   onMove,
+  onReorder,
   onContinue,
 }: {
   tokens: PortfolioToken[];
   onMove: (index: number, direction: -1 | 1) => void;
+  onReorder: (fromIndex: number, toIndex: number) => void;
   onContinue: () => void;
 }) {
+  const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const draggingSymbolRef = useRef<string | null>(null);
+  const [draggingSymbol, setDraggingSymbol] = useState<string | null>(null);
+
+  const getTargetIndex = (clientY: number) => {
+    for (let index = 0; index < tokens.length; index += 1) {
+      const row = rowRefs.current[tokens[index].symbol];
+      if (!row) continue;
+
+      const rect = row.getBoundingClientRect();
+      if (clientY < rect.top + rect.height / 2) {
+        return index;
+      }
+    }
+
+    return tokens.length - 1;
+  };
+
+  const startDrag = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    symbol: string
+  ) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    draggingSymbolRef.current = symbol;
+    setDraggingSymbol(symbol);
+  };
+
+  const endDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    draggingSymbolRef.current = null;
+    setDraggingSymbol(null);
+  };
+
+  useEffect(() => {
+    if (!draggingSymbol) return;
+
+    const moveDrag = (event: PointerEvent) => {
+      const symbol = draggingSymbolRef.current;
+      if (!symbol) return;
+
+      const fromIndex = tokens.findIndex((token) => token.symbol === symbol);
+      const toIndex = getTargetIndex(event.clientY);
+      onReorder(fromIndex, toIndex);
+    };
+
+    const cancelDrag = () => {
+      draggingSymbolRef.current = null;
+      setDraggingSymbol(null);
+    };
+
+    window.addEventListener("pointermove", moveDrag);
+    window.addEventListener("pointerup", cancelDrag);
+    window.addEventListener("pointercancel", cancelDrag);
+
+    return () => {
+      window.removeEventListener("pointermove", moveDrag);
+      window.removeEventListener("pointerup", cancelDrag);
+      window.removeEventListener("pointercancel", cancelDrag);
+    };
+  }, [draggingSymbol, onReorder, tokens]);
+
   return (
     <div className="flex flex-1 flex-col">
-      <div className="mb-5 rounded-[8px] border border-[#DDE4DC] bg-white p-5">
-        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-[8px] bg-[#E6F4EE] text-[#0E7C4F]">
+      <div className="mb-3 rounded-[8px] border border-[#DDE4DC] bg-white p-4">
+        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#E6F4EE] text-[#0E7C4F]">
           <ArrowLeftRight className="h-5 w-5" />
         </div>
-        <h2 className="text-2xl font-semibold leading-tight">
+        <h2 className="text-xl font-semibold leading-tight">
           Compra pesos digitales con lo que ya tienes en MiniPay.
         </h2>
-        <p className="mt-3 text-sm leading-6 text-[#66736B]">
+        <p className="mt-2 text-sm leading-5 text-[#66736B]">
           Ordena como quieres pagar. Usaremos primero los tokens de arriba.
         </p>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-2.5 pb-16">
         {tokens.map((token, index) => (
           <div
             key={token.symbol}
-            className="flex min-h-[68px] items-center gap-3 rounded-[8px] border border-[#DDE4DC] bg-white p-3"
+            ref={(element) => {
+              rowRefs.current[token.symbol] = element;
+            }}
+            className={`flex min-h-[62px] items-center gap-3 rounded-[8px] border bg-white p-3 transition ${
+              draggingSymbol === token.symbol
+                ? "scale-[0.99] border-[#0E7C4F] shadow-sm"
+                : "border-[#DDE4DC]"
+            }`}
           >
-            <GripVertical className="h-5 w-5 shrink-0 text-[#9AA69D]" />
+            <button
+              type="button"
+              aria-label={`Arrastrar ${token.symbol}`}
+              className="cursor-grab touch-none rounded-full p-1 text-[#9AA69D] active:cursor-grabbing active:text-[#0E7C4F]"
+              onPointerDown={(event) => startDrag(event, token.symbol)}
+              onPointerUp={endDrag}
+              onPointerCancel={endDrag}
+            >
+              <GripVertical className="h-5 w-5 shrink-0" />
+            </button>
             <TokenMark token={token} />
             <div className="min-w-0 flex-1">
               <p className="font-semibold">{token.symbol}</p>
@@ -219,22 +299,22 @@ function TokenActivationScreen({
 }) {
   return (
     <div className="flex flex-1 flex-col">
-      <div className="mb-5 rounded-[8px] border border-[#DDE4DC] bg-white p-5">
-        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-[8px] bg-[#E6F4EE] text-[#0E7C4F]">
+      <div className="mb-3 rounded-[8px] border border-[#DDE4DC] bg-white p-4">
+        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-[8px] bg-[#E6F4EE] text-[#0E7C4F]">
           <ShieldCheck className="h-5 w-5" />
         </div>
-        <h2 className="text-2xl font-semibold leading-tight">
+        <h2 className="text-xl font-semibold leading-tight">
           Prepara tus tokens
         </h2>
-        <p className="mt-3 text-sm leading-6 text-[#66736B]">
+        <p className="mt-2 text-sm leading-5 text-[#66736B]">
           Autoriza una vez para comprar COPm con un toque despues.
         </p>
-        <div className="mt-4 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium text-[#17211B]">
+        <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium text-[#17211B]">
           Permiso por token: hasta {formatUsd(purchasePreview.activationCapUsd)}
         </div>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-2.5 pb-16">
         {tokens.map((token) => {
           const isActive = token.activation === "active";
           const isActivating = activating === token.symbol;
@@ -242,7 +322,7 @@ function TokenActivationScreen({
           return (
             <div
               key={token.symbol}
-              className="flex min-h-[68px] items-center gap-3 rounded-[8px] border border-[#DDE4DC] bg-white p-3"
+              className="flex min-h-[62px] items-center gap-3 rounded-[8px] border border-[#DDE4DC] bg-white p-3"
             >
               <TokenMark token={token} />
               <div className="min-w-0 flex-1">
@@ -276,7 +356,7 @@ function TokenActivationScreen({
         })}
       </div>
 
-      <p className="mt-5 text-center text-xs text-[#66736B]">
+      <p className="mt-3 text-center text-xs text-[#66736B]">
         Esto no mueve tu saldo. Solo deja listo cada token.
       </p>
 
@@ -317,15 +397,18 @@ function BuyCopmScreen({
 }) {
   return (
     <div className="flex flex-1 flex-col">
-      <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-5">
+      <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
         <p className="text-sm font-medium text-[#66736B]">Disponible</p>
-        <p className="mt-1 text-3xl font-semibold leading-none">
+        <p className="mt-1 text-2xl font-semibold leading-none">
           {formatUsd(totalUsd)}{" "}
           <span className="text-sm font-medium text-[#66736B]">aprox.</span>
         </p>
+        <p className="mt-2 text-xs font-medium text-[#66736B]">
+          Tipo de cambio: {purchasePreview.exchangeRateLabel}
+        </p>
       </div>
 
-      <div className="mt-4 rounded-[8px] border border-[#DDE4DC] bg-white p-5">
+      <div className="mt-3 rounded-[8px] border border-[#DDE4DC] bg-white p-4">
         <label
           htmlFor="cop-amount"
           className="block text-sm font-semibold text-[#17211B]"
@@ -337,22 +420,25 @@ function BuyCopmScreen({
           inputMode="numeric"
           value={copAmount}
           onChange={(event) => onAmountChange(event.target.value)}
-          className="mt-3 h-14 w-full rounded-[8px] border border-[#DDE4DC] bg-[#F7F8F5] px-4 text-2xl font-semibold outline-none ring-[#0E7C4F] focus:ring-2"
+          className="mt-2 h-[52px] w-full rounded-[8px] border border-[#DDE4DC] bg-[#F7F8F5] px-4 text-2xl font-semibold outline-none ring-[#0E7C4F] focus:ring-2"
         />
+        <p className="mt-2 text-xs font-medium text-[#66736B]">
+          {purchasePreview.inputUsdLabel}
+        </p>
 
-        <div className="mt-5 rounded-[8px] bg-[#E6F4EE] p-4">
+        <div className="mt-3 rounded-[8px] bg-[#E6F4EE] p-4">
           <p className="text-sm font-medium text-[#66736B]">Recibiras</p>
-          <p className="mt-1 text-3xl font-semibold leading-tight text-[#0E7C4F]">
+          <p className="mt-1 text-[28px] font-semibold leading-tight text-[#0E7C4F]">
             {copAmount || "0"} COPm
           </p>
         </div>
 
-        <Button className="mt-5 h-12 w-full rounded-[8px] bg-[#0E7C4F] text-base font-semibold text-white hover:bg-[#075C3A]">
+        <Button className="mt-4 h-12 w-full rounded-[8px] bg-[#0E7C4F] text-base font-semibold text-white hover:bg-[#075C3A]">
           Comprar COPm
         </Button>
       </div>
 
-      <div className="mt-4 overflow-hidden rounded-[8px] border border-[#DDE4DC] bg-white">
+      <div className="mt-3 overflow-hidden rounded-[8px] border border-[#DDE4DC] bg-white">
         <button
           type="button"
           className="flex h-14 w-full items-center justify-between px-4 text-sm font-semibold"

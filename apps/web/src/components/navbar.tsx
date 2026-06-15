@@ -1,102 +1,33 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import Image from "next/image"
-import { usePathname } from "next/navigation"
-import { Menu, ExternalLink } from "lucide-react"
-
-import { Button } from "@/components/ui/button"
-import {
-  Sheet,
-  SheetContent,
-  SheetTrigger,
-} from "@/components/ui/sheet"
-import { ConnectButton } from "@/components/connect-button"
-
-const navLinks = [
-  { name: "Home", href: "/" },
-  { name: "Docs", href: "https://docs.celo.org", external: true },
-]
+import { HelpCircle } from "lucide-react";
 
 export function Navbar() {
-  const pathname = usePathname()
-  
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur-md supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 max-w-screen-2xl items-center justify-between px-4">
+    <header className="sticky top-0 z-50 w-full border-b border-[#DDE4DC] bg-[#F7F8F5]/95 backdrop-blur">
+      <div className="mx-auto flex h-12 w-full max-w-md items-center justify-between px-4 sm:max-w-lg md:max-w-2xl">
         <div className="flex items-center gap-2">
-          {/* Mobile menu button */}
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="md:hidden">
-                <Menu className="h-5 w-5" />
-                <span className="sr-only">Toggle menu</span>
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-80">
-              <div className="flex items-center gap-2 mb-8">
-
-                <span className="font-bold text-lg">
-                  cop_by
-                </span>
-              </div>
-              <nav className="flex flex-col gap-4">
-                {navLinks.map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    target={link.external ? "_blank" : undefined}
-                    rel={link.external ? "noopener noreferrer" : undefined}
-                    className={`flex items-center gap-2 text-base font-medium transition-colors hover:text-primary ${
-                      pathname === link.href ? "text-foreground" : "text-foreground/70"
-                    }`}
-                  >
-                    {link.name}
-                    {link.external && <ExternalLink className="h-4 w-4" />}
-                  </Link>
-                ))}
-                <div className="mt-6 pt-6 border-t">
-                  <Button asChild className="w-full">
-                    <ConnectButton />
-                  </Button>
-                </div>
-              </nav>
-            </SheetContent>
-          </Sheet>
-
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-
-            <span className="hidden font-bold text-xl sm:inline-block">
-              cop_by
-            </span>
-          </Link>
-        </div>
-        
-        {/* Desktop navigation */}
-        <nav className="hidden md:flex items-center gap-8">
-          {navLinks.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              target={link.external ? "_blank" : undefined}
-              rel={link.external ? "noopener noreferrer" : undefined}
-              className={`flex items-center gap-1.5 text-sm font-medium transition-colors hover:text-primary ${
-                pathname === link.href
-                  ? "text-foreground"
-                  : "text-foreground/70"
-              }`}
-            >
-              {link.name}
-              {link.external && <ExternalLink className="h-4 w-4" />}
-            </Link>
-          ))}
-          
-          <div className="flex items-center gap-3">
-            <ConnectButton />
+          <div className="grid h-7 w-7 place-items-center rounded-[8px] bg-[#0E7C4F] text-xs font-bold text-white">
+            C
           </div>
-        </nav>
+          <div>
+            <p className="text-sm font-semibold leading-none text-[#17211B]">
+              COPm
+            </p>
+            <p className="mt-0.5 text-[11px] leading-none text-[#66736B]">
+              Pesos digitales
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          aria-label="Ayuda"
+          className="grid h-9 w-9 place-items-center rounded-full border border-[#DDE4DC] bg-white text-[#66736B]"
+        >
+          <HelpCircle className="h-[18px] w-[18px]" />
+        </button>
       </div>
     </header>
-  )
+  );
 }
