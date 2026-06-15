@@ -5,9 +5,9 @@ import "@rainbow-me/rainbowkit/styles.css";
 import { injectedWallet } from "@rainbow-me/rainbowkit/wallets";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { WagmiProvider, createConfig, http, useConnect } from "wagmi";
-import { celo, celoSepolia } from "wagmi/chains";
-import { ConnectButton } from "./connect-button";
+import { WagmiProvider, createConfig, http } from "wagmi";
+
+import { NETWORK_CONFIG, SUPPORTED_CHAINS } from "@/lib/network-config";
 
 const connectors = connectorsForWallets(
   [
@@ -23,43 +23,31 @@ const connectors = connectorsForWallets(
 );
 
 const wagmiConfig = createConfig({
-  chains: [celo, celoSepolia],
+  chains: SUPPORTED_CHAINS,
   connectors,
   transports: {
-    [celo.id]: http(),
-    [celoSepolia.id]: http(),
+    [NETWORK_CONFIG.celo.chainId]: http(NETWORK_CONFIG.celo.rpcUrl),
+    [NETWORK_CONFIG["celo-sepolia"].chainId]: http(
+      NETWORK_CONFIG["celo-sepolia"].rpcUrl
+    ),
   },
   ssr: true,
 });
 
 const queryClient = new QueryClient();
 
-function WalletProviderInner({ children }: { children: React.ReactNode }) {
-  const { connect, connectors } = useConnect();
+export function WalletProvider({ children }: { children: React.ReactNode }) {
+  const [, setMounted] = useState(false);
 
   useEffect(() => {
-    // Check if the app is running inside MiniPay
-    if (window.ethereum && window.ethereum.isMiniPay) {
-      // Find the injected connector, which is what MiniPay uses
-      const injectedConnector = connectors.find((c) => c.id === "injected");
-      if (injectedConnector) {
-        connect({ connector: injectedConnector });
-      }
-    }
-  }, [connect, connectors]);
-
-  return <>{children}</>;
-}
-
-export function WalletProvider({ children }: { children: React.ReactNode }) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+    setMounted(true);
+  }, []);
 
   return (
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
         <RainbowKitProvider>
-          <WalletProviderInner>{children}</WalletProviderInner>
+          {children}
         </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>
