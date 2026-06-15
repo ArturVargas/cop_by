@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { useTokenPortfolio } from "@/hooks/use-token-portfolio";
 import {
   formatUsd,
   mockPortfolioTokens,
@@ -23,6 +24,7 @@ import {
 const steps = ["Ordenar", "Activar", "Comprar"];
 
 export default function Home() {
+  const portfolio = useTokenPortfolio();
   const [step, setStep] = useState(0);
   const [tokens, setTokens] = useState(mockPortfolioTokens);
   const [copAmount, setCopAmount] = useState(purchasePreview.copAmount);
@@ -33,6 +35,11 @@ export default function Home() {
     () => tokens.reduce((sum, token) => sum + token.balanceUsd, 0),
     [tokens]
   );
+  const isLivePortfolio = portfolio.isConnected && portfolio.isCorrectNetwork;
+  const effectiveTotalUsd = portfolio.isConnected ? portfolio.totalUsd : totalUsd;
+  const hasCompatibleTokens = tokens.some(
+    (token) => token.hasBalance ?? token.balanceUsd > 0
+  );
 
   const pendingTokens = tokens.filter((token) => token.activation !== "active");
   const allActive = pendingTokens.length === 0;
@@ -40,6 +47,47 @@ export default function Home() {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [step]);
+
+  useEffect(() => {
+    setTokens((currentTokens) => {
+      const nextBySymbol = new Map(
+        portfolio.tokens.map((token) => [token.symbol, token])
+      );
+      const orderedTokens: PortfolioToken[] = [];
+
+      currentTokens.forEach((token) => {
+        const nextToken = nextBySymbol.get(token.symbol);
+        if (nextToken) {
+          orderedTokens.push(nextToken);
+        }
+      });
+
+      const missingTokens = portfolio.tokens.filter(
+        (token) =>
+          !orderedTokens.some(
+            (orderedToken) => orderedToken.symbol === token.symbol
+          )
+      );
+      const nextTokens = [...orderedTokens, ...missingTokens];
+
+      if (
+        nextTokens.length === currentTokens.length &&
+        nextTokens.every(
+          (token, index) =>
+            token.symbol === currentTokens[index].symbol &&
+            token.balanceDisplay === currentTokens[index].balanceDisplay &&
+            token.balanceUsd === currentTokens[index].balanceUsd &&
+            token.activation === currentTokens[index].activation &&
+            token.allowanceDisplay === currentTokens[index].allowanceDisplay &&
+            token.requiresApproval === currentTokens[index].requiresApproval
+        )
+      ) {
+        return currentTokens;
+      }
+
+      return nextTokens;
+    });
+  }, [portfolio.tokens]);
 
   const moveToken = (index: number, direction: -1 | 1) => {
     const nextIndex = index + direction;
@@ -105,6 +153,9 @@ export default function Home() {
         {step === 0 && (
           <TokenOrderScreen
             tokens={tokens}
+            canContinue={!isLivePortfolio || hasCompatibleTokens}
+            hasCompatibleTokens={hasCompatibleTokens}
+            isLive={isLivePortfolio}
             onMove={moveToken}
             onReorder={reorderToken}
             onContinue={() => setStep(1)}
@@ -124,7 +175,9 @@ export default function Home() {
         {step === 2 && (
           <BuyCopmScreen
             copAmount={copAmount}
-            totalUsd={totalUsd}
+            hasCompatibleTokens={hasCompatibleTokens}
+            isLive={isLivePortfolio}
+            totalUsd={effectiveTotalUsd}
             detailsOpen={detailsOpen}
             tokens={tokens}
             onAmountChange={setCopAmount}
@@ -138,11 +191,17 @@ export default function Home() {
 
 function TokenOrderScreen({
   tokens,
+  canContinue,
+  hasCompatibleTokens,
+  isLive,
   onMove,
   onReorder,
   onContinue,
 }: {
   tokens: PortfolioToken[];
+  canContinue: boolean;
+  hasCompatibleTokens: boolean;
+  isLive: boolean;
   onMove: (index: number, direction: -1 | 1) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
   onContinue: () => void;
@@ -223,6 +282,17 @@ function TokenOrderScreen({
         <p className="mt-2 text-sm leading-5 text-[#66736B]">
           Ordena como quieres pagar. Usaremos primero los tokens de arriba.
         </p>
+        {isLive && (
+          <p className="mt-2 text-xs font-medium text-[#0E7C4F]">
+            Saldos leidos desde tu wallet.
+          </p>
+        )}
+        {isLive && !hasCompatibleTokens && (
+          <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
+            No encontramos tokens compatibles en esta wallet. Puedes recibir
+            USDC, USDT o ETH en Celo para comprar COPm.
+          </div>
+        )}
       </div>
 
       <div className="space-y-2.5 pb-16">
@@ -252,8 +322,15 @@ function TokenOrderScreen({
             <div className="min-w-0 flex-1">
               <p className="font-semibold">{token.symbol}</p>
               <p className="truncate text-xs text-[#66736B]">{token.label}</p>
+              {token.requiresApproval && (
+                <p className="text-[11px] text-[#9AA69D]">
+                  Allowance: {token.allowanceDisplay ?? "pendiente"}
+                </p>
+              )}
             </div>
-            <p className="text-sm font-semibold">{formatUsd(token.balanceUsd)}</p>
+            <p className="text-sm font-semibold">
+              {token.balanceDisplay ?? formatUsd(token.balanceUsd)}
+            </p>
             <div className="flex flex-col gap-1">
               <MoveButton
                 label={`Subir ${token.symbol}`}
@@ -275,6 +352,7 @@ function TokenOrderScreen({
       <div className="sticky bottom-0 -mx-4 mt-auto bg-[#F7F8F5]/95 px-4 py-3 backdrop-blur">
         <Button
           className="h-12 w-full rounded-[8px] bg-[#0E7C4F] text-base font-semibold text-white hover:bg-[#075C3A]"
+          disabled={!canContinue}
           onClick={onContinue}
         >
           Continuar
@@ -328,7 +406,7 @@ function TokenActivationScreen({
               <div className="min-w-0 flex-1">
                 <p className="font-semibold">{token.symbol}</p>
                 <p className="text-xs text-[#66736B]">
-                  {formatUsd(token.balanceUsd)}
+                  {token.balanceDisplay ?? formatUsd(token.balanceUsd)}
                 </p>
               </div>
               <span
@@ -382,6 +460,8 @@ function TokenActivationScreen({
 
 function BuyCopmScreen({
   copAmount,
+  hasCompatibleTokens,
+  isLive,
   totalUsd,
   detailsOpen,
   tokens,
@@ -389,12 +469,19 @@ function BuyCopmScreen({
   onDetailsToggle,
 }: {
   copAmount: string;
+  hasCompatibleTokens: boolean;
+  isLive: boolean;
   totalUsd: number;
   detailsOpen: boolean;
   tokens: PortfolioToken[];
   onAmountChange: (value: string) => void;
   onDetailsToggle: () => void;
 }) {
+  const hasNoFunds = isLive && !hasCompatibleTokens;
+  const hasInsufficientFunds =
+    !hasNoFunds && totalUsd < purchasePreview.inputUsdAmount;
+  const canBuy = !hasNoFunds && !hasInsufficientFunds;
+
   return (
     <div className="flex flex-1 flex-col">
       <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
@@ -425,6 +512,13 @@ function BuyCopmScreen({
         <p className="mt-2 text-xs font-medium text-[#66736B]">
           {purchasePreview.inputUsdLabel}
         </p>
+        {(hasNoFunds || hasInsufficientFunds) && (
+          <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
+            {hasNoFunds
+              ? "No encontramos tokens compatibles para comprar COPm."
+              : "Saldo insuficiente para comprar esta cantidad de COPm."}
+          </div>
+        )}
 
         <div className="mt-3 rounded-[8px] bg-[#E6F4EE] p-4">
           <p className="text-sm font-medium text-[#66736B]">Recibiras</p>
@@ -433,7 +527,10 @@ function BuyCopmScreen({
           </p>
         </div>
 
-        <Button className="mt-4 h-12 w-full rounded-[8px] bg-[#0E7C4F] text-base font-semibold text-white hover:bg-[#075C3A]">
+        <Button
+          className="mt-4 h-12 w-full rounded-[8px] bg-[#0E7C4F] text-base font-semibold text-white hover:bg-[#075C3A]"
+          disabled={!canBuy}
+        >
           Comprar COPm
         </Button>
       </div>

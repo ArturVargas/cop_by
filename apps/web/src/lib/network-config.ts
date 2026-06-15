@@ -79,8 +79,8 @@ export const NETWORK_CONFIG = {
       },
       weth: {
         key: "weth",
-        symbol: "WETH",
-        name: "Wrapped Ether",
+        symbol: "ETH",
+        name: "WETH on Celo",
         address: "0xD221812de1BD094f35587EE8E174B07B6167D9Af",
         decimals: 18,
         requiresApproval: true,
@@ -102,17 +102,17 @@ export const NETWORK_CONFIG = {
         key: "copm",
         symbol: "COPm",
         name: "Mento Colombian Peso",
+        address: "0x5F8d55c3627d2dc0a2B4afa798f877242F382F67",
         decimals: 18,
         requiresApproval: false,
-        enabled: false,
+        enabled: true,
       },
       usdc: {
         key: "usdc",
         symbol: "USDC",
         name: "USDC",
-        address: "0x2F25deB3848C207fc8E0c34035B3Ba7fC157602B",
+        address: "0x01C5C0122039549AD1493B8220cABEdD739BC44E",
         decimals: 6,
-        feeCurrency: "0x4822e58de6f5e485eF90df51C41CE01721331dC0",
         requiresApproval: true,
         enabled: true,
       },
@@ -120,8 +120,8 @@ export const NETWORK_CONFIG = {
         key: "usdt",
         symbol: "USDT",
         name: "Tether USD",
-        address: "0xC4f86E9B4A588D501c1c3e25628dFd50Bc8D615e",
-        decimals: 18,
+        address: "0xd077A400968890Eacc75cdc901F0356c943e4fDb",
+        decimals: 6,
         requiresApproval: true,
         enabled: true,
       },
@@ -135,8 +135,8 @@ export const NETWORK_CONFIG = {
       },
       weth: {
         key: "weth",
-        symbol: "WETH",
-        name: "Wrapped Ether",
+        symbol: "ETH",
+        name: "WETH on Celo",
         address: "0x2cE73DC897A3E10b3FF3F86470847c36ddB735cf",
         decimals: 18,
         requiresApproval: true,
@@ -167,4 +167,3 @@ export function getNetworkByChainId(chainId?: number) {
 export function getTargetNetwork() {
   return NETWORK_CONFIG[getConfiguredNetworkKey()];
 }
-
