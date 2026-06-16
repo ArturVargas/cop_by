@@ -16,13 +16,18 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { useTokenPortfolio } from "@/hooks/use-token-portfolio";
+import {
+  useTokenPortfolio,
+  type TokenUsdPrices,
+} from "@/hooks/use-token-portfolio";
 import {
   formatUsd,
   mockPortfolioTokens,
   PortfolioToken,
   purchasePreview,
 } from "@/lib/mock-portfolio";
+import { getTargetNetwork } from "@/lib/network-config";
+import { getSquidRoute } from "@/lib/squid-config";
 
 const steps = ["Ordenar", "Activar", "Comprar"];
 
@@ -31,13 +36,36 @@ function formatAddressPreview(address: string) {
   return `${address.slice(0, 7)}...${address.slice(-4)}`;
 }
 
-function getApprovalCap(token: PortfolioToken) {
-  if (!token.decimals || !["USDC", "USDT"].includes(token.symbol)) return;
-  return parseUnits(String(purchasePreview.activationCapUsd), token.decimals);
+function getTokenPrice(token: PortfolioToken, prices: TokenUsdPrices) {
+  if (["USDC", "USDT"].includes(token.symbol)) return 1;
+  return token.symbol === "ETH" || token.symbol === "WBTC"
+    ? prices[token.symbol]
+    : undefined;
+}
+
+function floorToDecimals(value: number, decimals: number) {
+  const factor = 10 ** Math.min(decimals, 8);
+  return Math.floor(value * factor) / factor;
+}
+
+function getApprovalCap(token: PortfolioToken, prices: TokenUsdPrices) {
+  if (!token.decimals) return;
+  const price = getTokenPrice(token, prices);
+  if (!price) return;
+  const tokenAmount = purchasePreview.activationCapUsd / price;
+  return parseUnits(
+    String(floorToDecimals(tokenAmount, token.decimals)),
+    token.decimals
+  );
 }
 
 export default function Home() {
-  const portfolio = useTokenPortfolio();
+  const targetNetwork = getTargetNetwork();
+  const copmToken = targetNetwork.tokens.copm;
+  const [approvalTarget, setApprovalTarget] = useState<Address>();
+  const [routeError, setRouteError] = useState<string | null>(null);
+  const [tokenPrices, setTokenPrices] = useState<TokenUsdPrices>({});
+  const portfolio = useTokenPortfolio(approvalTarget, tokenPrices);
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
   const [step, setStep] = useState(0);
@@ -51,20 +79,29 @@ export default function Home() {
     [tokens]
   );
   const isLivePortfolio = portfolio.isConnected && portfolio.isCorrectNetwork;
-  const isLoadingPortfolio = isLivePortfolio && portfolio.isLoading;
+  const isLoadingPortfolio = isLivePortfolio && portfolio.isBalanceLoading;
   const effectiveTotalUsd = portfolio.isConnected ? portfolio.totalUsd : totalUsd;
   const hasCompatibleTokens = tokens.some(
     (token) => token.hasBalance ?? token.balanceUsd > 0
   );
 
   const pendingTokens = tokens.filter(
-    (token) => token.activation !== "active" && getApprovalCap(token)
+    (token) => token.activation !== "active" && getApprovalCap(token, tokenPrices)
   );
   const allActive = pendingTokens.length === 0;
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [step]);
+
+  useEffect(() => {
+    fetch("/api/token-prices")
+      .then((response) => (response.ok ? response.json() : undefined))
+      .then((prices: TokenUsdPrices | undefined) => {
+        if (prices) setTokenPrices(prices);
+      })
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     setTokens((currentTokens) => {
@@ -107,6 +144,68 @@ export default function Home() {
     });
   }, [portfolio.tokens]);
 
+  useEffect(() => {
+    const sourceToken = tokens.find(
+      (token) =>
+        token.hasBalance &&
+        token.address &&
+        getApprovalCap(token, tokenPrices)
+    );
+
+    if (
+      !isLivePortfolio ||
+      isLoadingPortfolio ||
+      !portfolio.address ||
+      !copmToken.address ||
+      !sourceToken?.address
+    ) {
+      setApprovalTarget(undefined);
+      return;
+    }
+
+    const sourceCap = getApprovalCap(sourceToken, tokenPrices);
+    if (!sourceCap) return;
+    const fromAmount =
+      sourceToken.balance && sourceCap > sourceToken.balance
+        ? sourceToken.balance
+        : sourceCap;
+
+    let cancelled = false;
+    setRouteError(null);
+
+    getSquidRoute({
+      fromAddress: portfolio.address,
+      fromAmount: fromAmount.toString(),
+      fromChain: targetNetwork.squidChainId,
+      fromToken: sourceToken.address,
+      toAddress: portfolio.address,
+      toChain: targetNetwork.squidChainId,
+      toToken: copmToken.address,
+    })
+      .then(({ approvalTarget: nextTarget }) => {
+        if (cancelled) return;
+        setApprovalTarget(nextTarget);
+        if (!nextTarget) setRouteError("Squid no devolvio approval target.");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setApprovalTarget(undefined);
+        setRouteError("No pudimos obtener una route de Squid.");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    copmToken.address,
+    isLivePortfolio,
+    isLoadingPortfolio,
+    portfolio.address,
+    targetNetwork.squidChainId,
+    tokenPrices,
+    tokens,
+  ]);
+
   const moveToken = (index: number, direction: -1 | 1) => {
     const nextIndex = index + direction;
     if (nextIndex < 0 || nextIndex >= tokens.length) return;
@@ -133,15 +232,14 @@ export default function Home() {
 
   const activateNextToken = async () => {
     const nextToken = tokens.find(
-      (token) => token.activation !== "active" && getApprovalCap(token)
+      (token) => token.activation !== "active" && getApprovalCap(token, tokenPrices)
     );
     if (!nextToken) {
       setStep(2);
       return;
     }
 
-    const approvalCap = getApprovalCap(nextToken);
-    const approvalTarget = portfolio.approvalTarget;
+    const approvalCap = getApprovalCap(nextToken, tokenPrices);
     setActivating(nextToken.symbol);
 
     try {
@@ -211,8 +309,10 @@ export default function Home() {
           <TokenActivationScreen
             tokens={tokens}
             allActive={allActive}
-            approvalTarget={portfolio.approvalTarget}
+            approvalTarget={approvalTarget}
             activating={activating}
+            routeError={routeError}
+            tokenPrices={tokenPrices}
             onActivate={activateNextToken}
             onSkip={() => setStep(2)}
           />
@@ -417,6 +517,8 @@ function TokenActivationScreen({
   allActive,
   approvalTarget,
   activating,
+  routeError,
+  tokenPrices,
   onActivate,
   onSkip,
 }: {
@@ -424,6 +526,8 @@ function TokenActivationScreen({
   allActive: boolean;
   approvalTarget?: Address;
   activating: string | null;
+  routeError: string | null;
+  tokenPrices: TokenUsdPrices;
   onActivate: () => void;
   onSkip: () => void;
 }) {
@@ -446,7 +550,8 @@ function TokenActivationScreen({
             ? `Permiso por token: hasta ${formatUsd(
                 purchasePreview.activationCapUsd
               )}`
-            : "Primero necesitamos una route de Squid para saber a que contrato aprobar."}
+            : (routeError ??
+              "Buscando route de Squid para saber a que contrato aprobar.")}
         </div>
       </div>
 
@@ -454,7 +559,7 @@ function TokenActivationScreen({
         {tokens.map((token) => {
           const isActive = token.activation === "active";
           const isActivating = activating === token.symbol;
-          const canTokenApprove = Boolean(getApprovalCap(token));
+          const canTokenApprove = Boolean(getApprovalCap(token, tokenPrices));
 
           return (
             <div

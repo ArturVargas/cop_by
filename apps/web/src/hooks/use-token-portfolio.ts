@@ -24,6 +24,8 @@ const TOKEN_COLORS: Record<SupportedTokenKey, string> = {
 
 const STABLE_SYMBOLS = new Set(["USDC", "USDT", "COPm"]);
 
+export type TokenUsdPrices = Partial<Record<"ETH" | "WBTC", number>>;
+
 export type PortfolioTokenWithOnchain = PortfolioToken & {
   address?: Address;
   allowance?: bigint;
@@ -39,6 +41,8 @@ export type PortfolioTokenWithOnchain = PortfolioToken & {
 export type TokenPortfolioState = {
   address?: Address;
   approvalTarget?: Address;
+  isAllowanceLoading: boolean;
+  isBalanceLoading: boolean;
   isConnected: boolean;
   isCorrectNetwork: boolean;
   isLoading: boolean;
@@ -61,30 +65,57 @@ function formatTokenAmount(value: bigint | undefined, token: TokenConfig) {
   }).format(numeric);
 }
 
-function estimateUsdValue(value: bigint | undefined, token: TokenConfig) {
-  if (value === undefined || !STABLE_SYMBOLS.has(token.symbol)) return 0;
-  return Number(formatUnits(value, token.decimals));
+function getTokenPrice(token: TokenConfig, prices: TokenUsdPrices) {
+  if (STABLE_SYMBOLS.has(token.symbol)) return 1;
+  return token.symbol === "ETH" || token.symbol === "WBTC"
+    ? prices[token.symbol]
+    : undefined;
 }
 
-function getApprovalCap(token: TokenConfig) {
-  if (!["USDC", "USDT"].includes(token.symbol)) return;
-  return parseUnits(String(purchasePreview.activationCapUsd), token.decimals);
+function estimateUsdValue(
+  value: bigint | undefined,
+  token: TokenConfig,
+  prices: TokenUsdPrices
+) {
+  if (value === undefined) return 0;
+  const price = getTokenPrice(token, prices);
+  if (!price) return 0;
+  return Number(formatUnits(value, token.decimals)) * price;
+}
+
+function floorToDecimals(value: number, decimals: number) {
+  const factor = 10 ** Math.min(decimals, 8);
+  return Math.floor(value * factor) / factor;
+}
+
+function getApprovalCap(token: TokenConfig, prices: TokenUsdPrices) {
+  const price = getTokenPrice(token, prices);
+  if (!price) return;
+  const tokenAmount = purchasePreview.activationCapUsd / price;
+  return parseUnits(
+    String(floorToDecimals(tokenAmount, token.decimals)),
+    token.decimals
+  );
 }
 
 function getActivation(
   token: TokenConfig,
   allowance: bigint | undefined,
+  prices: TokenUsdPrices,
   approvalTarget?: Address
 ): TokenActivation {
   if (!token.requiresApproval) return "active";
   if (!approvalTarget) return "ready";
-  const approvalCap = getApprovalCap(token);
+  const approvalCap = getApprovalCap(token, prices);
   return approvalCap && allowance !== undefined && allowance >= approvalCap
     ? "active"
     : "ready";
 }
 
-export function useTokenPortfolio(approvalTarget?: Address): TokenPortfolioState {
+export function useTokenPortfolio(
+  approvalTarget?: Address,
+  prices: TokenUsdPrices = {}
+): TokenPortfolioState {
   const { address, currentNetwork, isConnected, isCorrectNetwork } =
     useWalletAdapter();
 
@@ -151,13 +182,13 @@ export function useTokenPortfolio(approvalTarget?: Address): TokenPortfolioState
       const allowance = token.requiresApproval
         ? (allowances.data?.[allowanceIndex++]?.result as bigint | undefined)
         : undefined;
-      const balanceUsd = estimateUsdValue(balance, token);
+      const balanceUsd = estimateUsdValue(balance, token, prices);
 
       return {
         symbol: token.symbol,
         label: token.name,
         balanceUsd,
-        activation: getActivation(token, allowance, approvalTarget),
+        activation: getActivation(token, allowance, prices, approvalTarget),
         color: TOKEN_COLORS[token.key],
         address: token.address,
         allowance,
@@ -177,6 +208,7 @@ export function useTokenPortfolio(approvalTarget?: Address): TokenPortfolioState
     balances.data,
     configuredTokens,
     approvalTarget,
+    prices,
     shouldRead,
   ]);
 
@@ -188,6 +220,8 @@ export function useTokenPortfolio(approvalTarget?: Address): TokenPortfolioState
   return {
     address,
     approvalTarget,
+    isAllowanceLoading: allowances.isLoading,
+    isBalanceLoading: balances.isLoading,
     isConnected,
     isCorrectNetwork,
     isLoading: balances.isLoading || allowances.isLoading,

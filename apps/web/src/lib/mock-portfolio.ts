@@ -5,6 +5,7 @@ export type PortfolioToken = {
   label: string;
   address?: `0x${string}`;
   allowance?: bigint;
+  balance?: bigint;
   balanceUsd: number;
   balanceDisplay?: string;
   decimals?: number;
