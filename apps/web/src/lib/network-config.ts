@@ -28,6 +28,12 @@ export type NetworkConfig = {
   tokens: Record<SupportedTokenKey, TokenConfig>;
 };
 
+const CELO_RPC_URL =
+  process.env.NEXT_PUBLIC_CELO_RPC_URL ?? "https://forno.celo.org";
+const CELO_SEPOLIA_RPC_URL =
+  process.env.NEXT_PUBLIC_CELO_SEPOLIA_RPC_URL ??
+  "https://forno.celo-sepolia.celo-testnet.org";
+
 export const NETWORK_CONFIG = {
   celo: {
     key: "celo",
@@ -36,7 +42,7 @@ export const NETWORK_CONFIG = {
     chainId: celo.id,
     squidChainId: String(celo.id),
     blockExplorerUrl: "https://celoscan.io",
-    rpcUrl: "https://forno.celo.org",
+    rpcUrl: CELO_RPC_URL,
     nativeCurrencySymbol: "CELO",
     tokens: {
       copm: {
@@ -95,7 +101,7 @@ export const NETWORK_CONFIG = {
     chainId: celoSepolia.id,
     squidChainId: String(celoSepolia.id),
     blockExplorerUrl: "https://sepolia.celoscan.io",
-    rpcUrl: "https://forno.celo-sepolia.celo-testnet.org",
+    rpcUrl: CELO_SEPOLIA_RPC_URL,
     nativeCurrencySymbol: "CELO",
     tokens: {
       copm: {

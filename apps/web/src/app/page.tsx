@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { erc20Abi, parseUnits, type Address } from "viem";
-import { usePublicClient, useWriteContract } from "wagmi";
+import { erc20Abi, isAddress, parseUnits, type Address } from "viem";
+import { usePublicClient, useSendTransaction, useWriteContract } from "wagmi";
 import {
   ArrowLeftRight,
   Check,
@@ -27,9 +27,16 @@ import {
   purchasePreview,
 } from "@/lib/mock-portfolio";
 import { getTargetNetwork } from "@/lib/network-config";
-import { getSquidRoute } from "@/lib/squid-config";
+import {
+  getSquidRoute,
+  getSquidStatus,
+  type SquidRouteResult,
+} from "@/lib/squid-config";
 
 const steps = ["Ordenar", "Activar", "Comprar"];
+const COP_PER_USD = 3810;
+
+type SwapStatus = "idle" | "quoting" | "buying" | "complete" | "error";
 
 function formatAddressPreview(address: string) {
   if (address.length <= 14) return address;
@@ -59,6 +66,86 @@ function getApprovalCap(token: PortfolioToken, prices: TokenUsdPrices) {
   );
 }
 
+function parseCopAmount(value: string) {
+  return Number(value.replace(/[^\d.]/g, "")) || 0;
+}
+
+function getPurchaseUsdAmount(copAmount: string) {
+  return parseCopAmount(copAmount) / COP_PER_USD;
+}
+
+function getTokenAmountForUsd(
+  token: PortfolioToken,
+  prices: TokenUsdPrices,
+  usdAmount: number
+) {
+  if (!token.decimals) return;
+  const price = getTokenPrice(token, prices);
+  if (!price) return;
+
+  return parseUnits(
+    String(floorToDecimals(usdAmount / price, token.decimals)),
+    token.decimals
+  );
+}
+
+function getSwapSourceToken(
+  tokens: PortfolioToken[],
+  prices: TokenUsdPrices,
+  usdAmount: number
+) {
+  return tokens.find((token) => {
+    const fromAmount = getTokenAmountForUsd(token, prices, usdAmount);
+    const isApproved = !token.isLive || token.activation === "active";
+
+    return (
+      isApproved &&
+      Boolean(token.address) &&
+      Boolean(fromAmount) &&
+      token.balanceUsd >= usdAmount &&
+      (!token.balance || !fromAmount || token.balance >= fromAmount)
+    );
+  });
+}
+
+async function waitForSquidStatus(
+  routeResult: SquidRouteResult,
+  transactionId: string,
+  chainId: string
+) {
+  if (!routeResult.requestId) return;
+
+  const completedStatuses = new Set([
+    "success",
+    "partial_success",
+    "needs_gas",
+    "not_found",
+  ]);
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const status = await getSquidStatus({
+        transactionId,
+        requestId: routeResult.requestId,
+        fromChainId: chainId,
+        toChainId: chainId,
+        quoteId: routeResult.route?.quoteId,
+      });
+
+      if (
+        status.squidTransactionStatus &&
+        completedStatuses.has(status.squidTransactionStatus)
+      ) {
+        return;
+      }
+    } catch {
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+  }
+}
+
 export default function Home() {
   const targetNetwork = getTargetNetwork();
   const copmToken = targetNetwork.tokens.copm;
@@ -67,12 +154,15 @@ export default function Home() {
   const [tokenPrices, setTokenPrices] = useState<TokenUsdPrices>({});
   const portfolio = useTokenPortfolio(approvalTarget, tokenPrices);
   const publicClient = usePublicClient();
+  const { sendTransactionAsync } = useSendTransaction();
   const { writeContractAsync } = useWriteContract();
   const [step, setStep] = useState(0);
   const [tokens, setTokens] = useState(mockPortfolioTokens);
   const [copAmount, setCopAmount] = useState(purchasePreview.copAmount);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [activating, setActivating] = useState<string | null>(null);
+  const [swapStatus, setSwapStatus] = useState<SwapStatus>("idle");
+  const [swapError, setSwapError] = useState<string | null>(null);
 
   const totalUsd = useMemo(
     () => tokens.reduce((sum, token) => sum + token.balanceUsd, 0),
@@ -272,6 +362,69 @@ export default function Home() {
     }
   };
 
+  const updateCopAmount = (value: string) => {
+    setCopAmount(value);
+    setSwapStatus("idle");
+    setSwapError(null);
+  };
+
+  const buyCopm = async () => {
+    setSwapError(null);
+
+    try {
+      if (!portfolio.address || !copmToken.address) {
+        throw new Error("Wallet not ready");
+      }
+
+      const usdAmount = getPurchaseUsdAmount(copAmount);
+      const sourceToken = getSwapSourceToken(tokens, tokenPrices, usdAmount);
+      const fromAmount = sourceToken
+        ? getTokenAmountForUsd(sourceToken, tokenPrices, usdAmount)
+        : undefined;
+
+      if (!sourceToken?.address || !fromAmount) {
+        throw new Error("No approved source token");
+      }
+
+      setSwapStatus("quoting");
+      const routeResult = await getSquidRoute({
+        fromAddress: portfolio.address,
+        fromAmount: fromAmount.toString(),
+        fromChain: targetNetwork.squidChainId,
+        fromToken: sourceToken.address,
+        slippage: 0.3,
+        toAddress: portfolio.address,
+        toChain: targetNetwork.squidChainId,
+        toToken: copmToken.address,
+      });
+      const transactionRequest = routeResult.route?.transactionRequest;
+
+      if (
+        !transactionRequest?.target ||
+        !isAddress(transactionRequest.target) ||
+        !transactionRequest.data
+      ) {
+        throw new Error("Invalid Squid transaction");
+      }
+
+      setSwapStatus("buying");
+      const hash = await sendTransactionAsync({
+        to: transactionRequest.target,
+        data: transactionRequest.data,
+        value: BigInt(transactionRequest.value ?? "0"),
+      });
+
+      await publicClient?.waitForTransactionReceipt({ hash });
+      await waitForSquidStatus(routeResult, hash, targetNetwork.squidChainId);
+      setSwapStatus("complete");
+    } catch {
+      setSwapStatus("error");
+      setSwapError(
+        "No pudimos completar la compra. Revisa permisos, saldo y red."
+      );
+    }
+  };
+
   return (
     <main className="min-h-[calc(100vh-3rem)] bg-[#F7F8F5] text-[#17211B]">
       <section className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-md flex-col px-4 py-3 sm:max-w-lg sm:py-5 md:max-w-2xl">
@@ -325,8 +478,12 @@ export default function Home() {
             isLive={isLivePortfolio}
             totalUsd={effectiveTotalUsd}
             detailsOpen={detailsOpen}
+            swapError={swapError}
+            swapStatus={swapStatus}
+            tokenPrices={tokenPrices}
             tokens={tokens}
-            onAmountChange={setCopAmount}
+            onAmountChange={updateCopAmount}
+            onBuy={buyCopm}
             onDetailsToggle={() => setDetailsOpen((open) => !open)}
           />
         )}
@@ -697,8 +854,12 @@ function BuyCopmScreen({
   isLive,
   totalUsd,
   detailsOpen,
+  swapError,
+  swapStatus,
+  tokenPrices,
   tokens,
   onAmountChange,
+  onBuy,
   onDetailsToggle,
 }: {
   copAmount: string;
@@ -706,14 +867,35 @@ function BuyCopmScreen({
   isLive: boolean;
   totalUsd: number;
   detailsOpen: boolean;
+  swapError: string | null;
+  swapStatus: SwapStatus;
+  tokenPrices: TokenUsdPrices;
   tokens: PortfolioToken[];
   onAmountChange: (value: string) => void;
+  onBuy: () => void;
   onDetailsToggle: () => void;
 }) {
   const hasNoFunds = isLive && !hasCompatibleTokens;
+  const requestedUsd = getPurchaseUsdAmount(copAmount);
   const hasInsufficientFunds =
-    !hasNoFunds && totalUsd < purchasePreview.inputUsdAmount;
-  const canBuy = !hasNoFunds && !hasInsufficientFunds;
+    !hasNoFunds && totalUsd < requestedUsd;
+  const selectedToken = getSwapSourceToken(tokens, tokenPrices, requestedUsd);
+  const needsApprovedToken =
+    isLive && !hasNoFunds && !hasInsufficientFunds && !selectedToken;
+  const canBuy =
+    !hasNoFunds &&
+    !hasInsufficientFunds &&
+    !needsApprovedToken &&
+    requestedUsd > 0;
+  const isBusy = swapStatus === "quoting" || swapStatus === "buying";
+  const buttonLabel =
+    swapStatus === "quoting"
+      ? "Cotizando"
+      : swapStatus === "buying"
+        ? "Comprando"
+        : swapStatus === "complete"
+          ? "Completado"
+          : "Comprar COPm";
 
   return (
     <div className="flex flex-1 flex-col">
@@ -743,13 +925,23 @@ function BuyCopmScreen({
           className="mt-2 h-[52px] w-full rounded-[8px] border border-[#DDE4DC] bg-[#F7F8F5] px-4 text-2xl font-semibold outline-none ring-[#0E7C4F] focus:ring-2"
         />
         <p className="mt-2 text-xs font-medium text-[#66736B]">
-          {purchasePreview.inputUsdLabel}
+          Equivale a {formatUsd(requestedUsd)} USD aprox.
         </p>
         {(hasNoFunds || hasInsufficientFunds) && (
           <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
             {hasNoFunds
               ? "No encontramos tokens compatibles para comprar COPm."
               : "Saldo insuficiente para comprar esta cantidad de COPm."}
+          </div>
+        )}
+        {needsApprovedToken && (
+          <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
+            Activa un token con saldo suficiente antes de comprar COPm.
+          </div>
+        )}
+        {swapError && (
+          <div className="mt-3 rounded-[8px] bg-[#FDECEC] px-3 py-2 text-sm font-medium leading-5 text-[#8A1F1F]">
+            {swapError} Intenta de nuevo.
           </div>
         )}
 
@@ -762,9 +954,10 @@ function BuyCopmScreen({
 
         <Button
           className="mt-4 h-12 w-full rounded-[8px] bg-[#0E7C4F] text-base font-semibold text-white hover:bg-[#075C3A]"
-          disabled={!canBuy}
+          disabled={!canBuy || isBusy}
+          onClick={onBuy}
         >
-          Comprar COPm
+          {buttonLabel}
         </Button>
       </div>
 
@@ -788,7 +981,7 @@ function BuyCopmScreen({
               Usaremos
             </p>
             <div className="space-y-2">
-              {tokens.slice(0, 3).map((token, index) => (
+              {(selectedToken ? [selectedToken] : tokens.slice(0, 3)).map((token) => (
                 <div
                   key={token.symbol}
                   className="flex items-center justify-between text-sm"
@@ -801,7 +994,7 @@ function BuyCopmScreen({
                     {token.symbol}
                   </span>
                   <span className="font-medium">
-                    {index === 2 ? "$12.50 aprox." : formatUsd(token.balanceUsd)}
+                    {formatUsd(token.balanceUsd)}
                   </span>
                 </div>
               ))}
