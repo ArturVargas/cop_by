@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
+import { erc20Abi, parseUnits, type Address } from "viem";
+import { usePublicClient, useWriteContract } from "wagmi";
 import {
   ArrowLeftRight,
   Check,
@@ -29,8 +31,15 @@ function formatAddressPreview(address: string) {
   return `${address.slice(0, 7)}...${address.slice(-4)}`;
 }
 
+function getApprovalCap(token: PortfolioToken) {
+  if (!token.decimals || !["USDC", "USDT"].includes(token.symbol)) return;
+  return parseUnits(String(purchasePreview.activationCapUsd), token.decimals);
+}
+
 export default function Home() {
   const portfolio = useTokenPortfolio();
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
   const [step, setStep] = useState(0);
   const [tokens, setTokens] = useState(mockPortfolioTokens);
   const [copAmount, setCopAmount] = useState(purchasePreview.copAmount);
@@ -48,7 +57,9 @@ export default function Home() {
     (token) => token.hasBalance ?? token.balanceUsd > 0
   );
 
-  const pendingTokens = tokens.filter((token) => token.activation !== "active");
+  const pendingTokens = tokens.filter(
+    (token) => token.activation !== "active" && getApprovalCap(token)
+  );
   const allActive = pendingTokens.length === 0;
 
   useEffect(() => {
@@ -120,15 +131,37 @@ export default function Home() {
     setTokens(updated);
   };
 
-  const activateNextToken = () => {
-    const nextToken = tokens.find((token) => token.activation !== "active");
+  const activateNextToken = async () => {
+    const nextToken = tokens.find(
+      (token) => token.activation !== "active" && getApprovalCap(token)
+    );
     if (!nextToken) {
       setStep(2);
       return;
     }
 
+    const approvalCap = getApprovalCap(nextToken);
+    const approvalTarget = portfolio.approvalTarget;
     setActivating(nextToken.symbol);
-    setTimeout(() => {
+
+    try {
+      if (
+        nextToken.requiresApproval &&
+        (!nextToken.address || !approvalTarget || !approvalCap)
+      ) {
+        return;
+      }
+
+      if (nextToken.address && approvalTarget && approvalCap) {
+        const hash = await writeContractAsync({
+          address: nextToken.address as Address,
+          abi: erc20Abi,
+          functionName: "approve",
+          args: [approvalTarget, approvalCap],
+        });
+        await publicClient?.waitForTransactionReceipt({ hash });
+      }
+
       setTokens((currentTokens) =>
         currentTokens.map((token) =>
           token.symbol === nextToken.symbol
@@ -136,8 +169,9 @@ export default function Home() {
             : token
         )
       );
+    } finally {
       setActivating(null);
-    }, 650);
+    }
   };
 
   return (
@@ -177,6 +211,7 @@ export default function Home() {
           <TokenActivationScreen
             tokens={tokens}
             allActive={allActive}
+            approvalTarget={portfolio.approvalTarget}
             activating={activating}
             onActivate={activateNextToken}
             onSkip={() => setStep(2)}
@@ -380,16 +415,20 @@ function TokenOrderScreen({
 function TokenActivationScreen({
   tokens,
   allActive,
+  approvalTarget,
   activating,
   onActivate,
   onSkip,
 }: {
   tokens: PortfolioToken[];
   allActive: boolean;
+  approvalTarget?: Address;
   activating: string | null;
   onActivate: () => void;
   onSkip: () => void;
 }) {
+  const canApprove = Boolean(approvalTarget);
+
   return (
     <div className="flex flex-1 flex-col">
       <div className="mb-3 rounded-[8px] border border-[#DDE4DC] bg-white p-4">
@@ -403,7 +442,11 @@ function TokenActivationScreen({
           Autoriza una vez para comprar COPm con un toque despues.
         </p>
         <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium text-[#17211B]">
-          Permiso por token: hasta {formatUsd(purchasePreview.activationCapUsd)}
+          {canApprove
+            ? `Permiso por token: hasta ${formatUsd(
+                purchasePreview.activationCapUsd
+              )}`
+            : "Primero necesitamos una route de Squid para saber a que contrato aprobar."}
         </div>
       </div>
 
@@ -411,6 +454,7 @@ function TokenActivationScreen({
         {tokens.map((token) => {
           const isActive = token.activation === "active";
           const isActivating = activating === token.symbol;
+          const canTokenApprove = Boolean(getApprovalCap(token));
 
           return (
             <div
@@ -430,6 +474,8 @@ function TokenActivationScreen({
                     ? "bg-[#E6F4EE] text-[#0E7C4F]"
                     : isActivating
                       ? "bg-[#FFF6D8] text-[#B7791F]"
+                      : !canTokenApprove
+                        ? "bg-[#F7F8F5] text-[#9AA69D]"
                       : "bg-[#F7F8F5] text-[#66736B]"
                 }`}
               >
@@ -440,6 +486,8 @@ function TokenActivationScreen({
                   </>
                 ) : isActivating ? (
                   "Activando"
+                ) : !canTokenApprove ? (
+                  "Luego"
                 ) : (
                   "Activar"
                 )}
@@ -457,7 +505,7 @@ function TokenActivationScreen({
         <Button
           className="h-12 w-full rounded-[8px] bg-[#0E7C4F] text-base font-semibold text-white hover:bg-[#075C3A]"
           onClick={allActive ? onSkip : onActivate}
-          disabled={activating !== null}
+          disabled={activating !== null || (!allActive && !canApprove)}
         >
           {allActive ? "Continuar" : "Preparar tokens"}
         </Button>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { erc20Abi, formatUnits, type Address } from "viem";
+import { erc20Abi, formatUnits, parseUnits, type Address } from "viem";
 import { useReadContracts } from "wagmi";
 
 import { useWalletAdapter } from "@/hooks/use-wallet-adapter";
@@ -9,6 +9,7 @@ import type { SupportedTokenKey, TokenConfig } from "@/lib/network-config";
 import {
   formatUsd,
   mockPortfolioTokens,
+  purchasePreview,
   type PortfolioToken,
   type TokenActivation,
 } from "@/lib/mock-portfolio";
@@ -65,6 +66,11 @@ function estimateUsdValue(value: bigint | undefined, token: TokenConfig) {
   return Number(formatUnits(value, token.decimals));
 }
 
+function getApprovalCap(token: TokenConfig) {
+  if (!["USDC", "USDT"].includes(token.symbol)) return;
+  return parseUnits(String(purchasePreview.activationCapUsd), token.decimals);
+}
+
 function getActivation(
   token: TokenConfig,
   allowance: bigint | undefined,
@@ -72,7 +78,10 @@ function getActivation(
 ): TokenActivation {
   if (!token.requiresApproval) return "active";
   if (!approvalTarget) return "ready";
-  return allowance && allowance > 0n ? "active" : "ready";
+  const approvalCap = getApprovalCap(token);
+  return approvalCap && allowance !== undefined && allowance >= approvalCap
+    ? "active"
+    : "ready";
 }
 
 export function useTokenPortfolio(approvalTarget?: Address): TokenPortfolioState {

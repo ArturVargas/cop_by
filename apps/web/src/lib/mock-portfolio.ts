@@ -3,8 +3,11 @@ export type TokenActivation = "active" | "ready" | "pending";
 export type PortfolioToken = {
   symbol: string;
   label: string;
+  address?: `0x${string}`;
+  allowance?: bigint;
   balanceUsd: number;
   balanceDisplay?: string;
+  decimals?: number;
   activation: TokenActivation;
   color: string;
   allowanceDisplay?: string;
