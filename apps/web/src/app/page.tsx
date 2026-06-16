@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  Copy,
   GripVertical,
   ShieldCheck,
 } from "lucide-react";
@@ -23,6 +24,11 @@ import {
 
 const steps = ["Ordenar", "Activar", "Comprar"];
 
+function formatAddressPreview(address: string) {
+  if (address.length <= 14) return address;
+  return `${address.slice(0, 7)}...${address.slice(-4)}`;
+}
+
 export default function Home() {
   const portfolio = useTokenPortfolio();
   const [step, setStep] = useState(0);
@@ -36,6 +42,7 @@ export default function Home() {
     [tokens]
   );
   const isLivePortfolio = portfolio.isConnected && portfolio.isCorrectNetwork;
+  const isLoadingPortfolio = isLivePortfolio && portfolio.isLoading;
   const effectiveTotalUsd = portfolio.isConnected ? portfolio.totalUsd : totalUsd;
   const hasCompatibleTokens = tokens.some(
     (token) => token.hasBalance ?? token.balanceUsd > 0
@@ -153,9 +160,13 @@ export default function Home() {
         {step === 0 && (
           <TokenOrderScreen
             tokens={tokens}
-            canContinue={!isLivePortfolio || hasCompatibleTokens}
+            canContinue={
+              !isLivePortfolio || (!isLoadingPortfolio && hasCompatibleTokens)
+            }
             hasCompatibleTokens={hasCompatibleTokens}
             isLive={isLivePortfolio}
+            isLoading={isLoadingPortfolio}
+            userAddress={portfolio.address}
             onMove={moveToken}
             onReorder={reorderToken}
             onContinue={() => setStep(1)}
@@ -194,6 +205,8 @@ function TokenOrderScreen({
   canContinue,
   hasCompatibleTokens,
   isLive,
+  isLoading,
+  userAddress,
   onMove,
   onReorder,
   onContinue,
@@ -202,6 +215,8 @@ function TokenOrderScreen({
   canContinue: boolean;
   hasCompatibleTokens: boolean;
   isLive: boolean;
+  isLoading: boolean;
+  userAddress?: string;
   onMove: (index: number, direction: -1 | 1) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
   onContinue: () => void;
@@ -287,67 +302,67 @@ function TokenOrderScreen({
             Saldos leidos desde tu wallet.
           </p>
         )}
-        {isLive && !hasCompatibleTokens && (
-          <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
-            No encontramos tokens compatibles en esta wallet. Puedes recibir
-            USDC, USDT o ETH en Celo para comprar COPm.
-          </div>
-        )}
       </div>
 
-      <div className="space-y-2.5 pb-16">
-        {tokens.map((token, index) => (
-          <div
-            key={token.symbol}
-            ref={(element) => {
-              rowRefs.current[token.symbol] = element;
-            }}
-            className={`flex min-h-[62px] items-center gap-3 rounded-[8px] border bg-white p-3 transition ${
-              draggingSymbol === token.symbol
-                ? "scale-[0.99] border-[#0E7C4F] shadow-sm"
-                : "border-[#DDE4DC]"
-            }`}
-          >
-            <button
-              type="button"
-              aria-label={`Arrastrar ${token.symbol}`}
-              className="cursor-grab touch-none rounded-full p-1 text-[#9AA69D] active:cursor-grabbing active:text-[#0E7C4F]"
-              onPointerDown={(event) => startDrag(event, token.symbol)}
-              onPointerUp={endDrag}
-              onPointerCancel={endDrag}
+      {isLoading ? (
+        <TokenListSkeleton />
+      ) : isLive && !hasCompatibleTokens ? (
+        <TokenEmptyStateMessage userAddress={userAddress} />
+      ) : (
+        <div className="space-y-2.5 pb-16">
+          {tokens.map((token, index) => (
+            <div
+              key={token.symbol}
+              ref={(element) => {
+                rowRefs.current[token.symbol] = element;
+              }}
+              className={`flex min-h-[62px] items-center gap-3 rounded-[8px] border bg-white p-3 transition ${
+                draggingSymbol === token.symbol
+                  ? "scale-[0.99] border-[#0E7C4F] shadow-sm"
+                  : "border-[#DDE4DC]"
+              }`}
             >
-              <GripVertical className="h-5 w-5 shrink-0" />
-            </button>
-            <TokenMark token={token} />
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold">{token.symbol}</p>
-              <p className="truncate text-xs text-[#66736B]">{token.label}</p>
-              {token.requiresApproval && (
-                <p className="text-[11px] text-[#9AA69D]">
-                  Allowance: {token.allowanceDisplay ?? "pendiente"}
-                </p>
-              )}
+              <button
+                type="button"
+                aria-label={`Arrastrar ${token.symbol}`}
+                className="cursor-grab touch-none rounded-full p-1 text-[#9AA69D] active:cursor-grabbing active:text-[#0E7C4F]"
+                onPointerDown={(event) => startDrag(event, token.symbol)}
+                onPointerUp={endDrag}
+                onPointerCancel={endDrag}
+              >
+                <GripVertical className="h-5 w-5 shrink-0" />
+              </button>
+              <TokenMark token={token} />
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold">{token.symbol}</p>
+                <p className="truncate text-xs text-[#66736B]">{token.label}</p>
+                {token.requiresApproval && (
+                  <p className="text-[11px] text-[#9AA69D]">
+                    Allowance: {token.allowanceDisplay ?? "pendiente"}
+                  </p>
+                )}
+              </div>
+              <p className="text-sm font-semibold">
+                {token.balanceDisplay ?? formatUsd(token.balanceUsd)}
+              </p>
+              <div className="flex flex-col gap-1">
+                <MoveButton
+                  label={`Subir ${token.symbol}`}
+                  disabled={index === 0}
+                  onClick={() => onMove(index, -1)}
+                  direction="up"
+                />
+                <MoveButton
+                  label={`Bajar ${token.symbol}`}
+                  disabled={index === tokens.length - 1}
+                  onClick={() => onMove(index, 1)}
+                  direction="down"
+                />
+              </div>
             </div>
-            <p className="text-sm font-semibold">
-              {token.balanceDisplay ?? formatUsd(token.balanceUsd)}
-            </p>
-            <div className="flex flex-col gap-1">
-              <MoveButton
-                label={`Subir ${token.symbol}`}
-                disabled={index === 0}
-                onClick={() => onMove(index, -1)}
-                direction="up"
-              />
-              <MoveButton
-                label={`Bajar ${token.symbol}`}
-                disabled={index === tokens.length - 1}
-                onClick={() => onMove(index, 1)}
-                direction="down"
-              />
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
 
       <div className="sticky bottom-0 -mx-4 mt-auto bg-[#F7F8F5]/95 px-4 py-3 backdrop-blur">
         <Button
@@ -453,6 +468,71 @@ function TokenActivationScreen({
         >
           Saltar por ahora
         </button>
+      </div>
+    </div>
+  );
+}
+
+function TokenListSkeleton() {
+  return (
+    <div className="space-y-2.5 pb-16">
+      {[0, 1, 2].map((item) => (
+        <div
+          key={item}
+          className="flex min-h-[62px] items-center gap-3 rounded-[8px] border border-dashed border-[#DDE4DC] bg-white/70 p-3"
+          aria-hidden="true"
+        >
+          <div className="h-5 w-5 rounded-full bg-[#DDE4DC]" />
+          <div className="h-10 w-10 shrink-0 rounded-full bg-[#E8EDE7]" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="h-3 w-24 rounded-full bg-[#DDE4DC]" />
+            <div className="h-2.5 w-36 rounded-full bg-[#E8EDE7]" />
+          </div>
+          <div className="h-4 w-14 rounded-full bg-[#DDE4DC]" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TokenEmptyStateMessage({ userAddress }: { userAddress?: string }) {
+  const copyAddress = () => {
+    if (!userAddress) return;
+    void navigator.clipboard.writeText(userAddress);
+  };
+  const addressPreview = userAddress
+    ? formatAddressPreview(userAddress)
+    : undefined;
+
+  return (
+    <div className="pb-16">
+      <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
+        <p className="text-sm font-semibold text-[#17211B]">
+          No encontramos tokens compatibles
+        </p>
+        <p className="mt-1 text-sm leading-5 text-[#66736B]">
+          Puedes recibir USDC, USDT o ETH en Celo para comprar COPm.
+        </p>
+        {userAddress && (
+          <div className="mt-4 border-t border-[#DDE4DC] pt-3">
+            <p className="text-xs font-medium text-[#66736B]">
+              Tu address para recibir tokens:
+            </p>
+            <div className="mt-2 flex items-center gap-2 rounded-[8px] bg-[#F7F8F5] p-2">
+              <p className="min-w-0 flex-1 font-mono text-xs text-[#17211B]">
+                {addressPreview}
+              </p>
+              <button
+                type="button"
+                aria-label="Copiar address"
+                onClick={copyAddress}
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-[8px] bg-white text-[#0E7C4F] shadow-sm"
+              >
+                <Copy className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

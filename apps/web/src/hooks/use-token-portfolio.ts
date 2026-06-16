@@ -36,6 +36,7 @@ export type PortfolioTokenWithOnchain = PortfolioToken & {
 };
 
 export type TokenPortfolioState = {
+  address?: Address;
   approvalTarget?: Address;
   isConnected: boolean;
   isCorrectNetwork: boolean;
@@ -176,6 +177,7 @@ export function useTokenPortfolio(approvalTarget?: Address): TokenPortfolioState
   );
 
   return {
+    address,
     approvalTarget,
     isConnected,
     isCorrectNetwork,
