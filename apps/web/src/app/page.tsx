@@ -66,6 +66,10 @@ function getApprovalCap(token: PortfolioToken, prices: TokenUsdPrices) {
   );
 }
 
+function tokenHasBalance(token: PortfolioToken) {
+  return token.hasBalance ?? token.balanceUsd > 0;
+}
+
 function parseCopAmount(value: string) {
   return Number(value.replace(/[^\d.]/g, "")) || 0;
 }
@@ -172,11 +176,14 @@ export default function Home() {
   const isLoadingPortfolio = isLivePortfolio && portfolio.isBalanceLoading;
   const effectiveTotalUsd = portfolio.isConnected ? portfolio.totalUsd : totalUsd;
   const hasCompatibleTokens = tokens.some(
-    (token) => token.hasBalance ?? token.balanceUsd > 0
+    (token) => tokenHasBalance(token)
   );
 
   const pendingTokens = tokens.filter(
-    (token) => token.activation !== "active" && getApprovalCap(token, tokenPrices)
+    (token) =>
+      tokenHasBalance(token) &&
+      token.activation !== "active" &&
+      getApprovalCap(token, tokenPrices)
   );
   const allActive = pendingTokens.length === 0;
 
@@ -296,13 +303,6 @@ export default function Home() {
     tokens,
   ]);
 
-  const moveToken = (index: number, direction: -1 | 1) => {
-    const nextIndex = index + direction;
-    if (nextIndex < 0 || nextIndex >= tokens.length) return;
-
-    reorderToken(index, nextIndex);
-  };
-
   const reorderToken = (fromIndex: number, toIndex: number) => {
     if (
       fromIndex === toIndex ||
@@ -322,7 +322,10 @@ export default function Home() {
 
   const activateNextToken = async () => {
     const nextToken = tokens.find(
-      (token) => token.activation !== "active" && getApprovalCap(token, tokenPrices)
+      (token) =>
+        tokenHasBalance(token) &&
+        token.activation !== "active" &&
+        getApprovalCap(token, tokenPrices)
     );
     if (!nextToken) {
       setStep(2);
@@ -452,7 +455,6 @@ export default function Home() {
             isLive={isLivePortfolio}
             isLoading={isLoadingPortfolio}
             userAddress={portfolio.address}
-            onMove={moveToken}
             onReorder={reorderToken}
             onContinue={() => setStep(1)}
           />
@@ -499,7 +501,6 @@ function TokenOrderScreen({
   isLive,
   isLoading,
   userAddress,
-  onMove,
   onReorder,
   onContinue,
 }: {
@@ -509,16 +510,21 @@ function TokenOrderScreen({
   isLive: boolean;
   isLoading: boolean;
   userAddress?: string;
-  onMove: (index: number, direction: -1 | 1) => void;
   onReorder: (fromIndex: number, toIndex: number) => void;
   onContinue: () => void;
 }) {
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const draggingSymbolRef = useRef<string | null>(null);
   const [draggingSymbol, setDraggingSymbol] = useState<string | null>(null);
+  const orderableTokenCount = isLive
+    ? tokens.filter((token) => token.hasBalance).length
+    : tokens.length;
+  const isOrderableToken = (token: PortfolioToken) =>
+    !isLive || Boolean(token.hasBalance);
 
   const getTargetIndex = (clientY: number) => {
     for (let index = 0; index < tokens.length; index += 1) {
+      if (!isOrderableToken(tokens[index])) continue;
       const row = rowRefs.current[tokens[index].symbol];
       if (!row) continue;
 
@@ -528,7 +534,23 @@ function TokenOrderScreen({
       }
     }
 
-    return tokens.length - 1;
+    for (let index = tokens.length - 1; index >= 0; index -= 1) {
+      if (isOrderableToken(tokens[index])) return index;
+    }
+
+    return -1;
+  };
+
+  const getNextOrderableIndex = (index: number, direction: -1 | 1) => {
+    for (
+      let nextIndex = index + direction;
+      nextIndex >= 0 && nextIndex < tokens.length;
+      nextIndex += direction
+    ) {
+      if (isOrderableToken(tokens[nextIndex])) return nextIndex;
+    }
+
+    return -1;
   };
 
   const startDrag = (
@@ -558,6 +580,7 @@ function TokenOrderScreen({
 
       const fromIndex = tokens.findIndex((token) => token.symbol === symbol);
       const toIndex = getTargetIndex(event.clientY);
+      if (toIndex === -1) return;
       onReorder(fromIndex, toIndex);
     };
 
@@ -602,57 +625,72 @@ function TokenOrderScreen({
         <TokenEmptyStateMessage userAddress={userAddress} />
       ) : (
         <div className="space-y-2.5 pb-16">
-          {tokens.map((token, index) => (
-            <div
-              key={token.symbol}
-              ref={(element) => {
-                rowRefs.current[token.symbol] = element;
-              }}
-              className={`flex min-h-[62px] items-center gap-3 rounded-[8px] border bg-white p-3 transition ${
-                draggingSymbol === token.symbol
-                  ? "scale-[0.99] border-[#0E7C4F] shadow-sm"
-                  : "border-[#DDE4DC]"
-              }`}
-            >
-              <button
-                type="button"
-                aria-label={`Arrastrar ${token.symbol}`}
-                className="cursor-grab touch-none rounded-full p-1 text-[#9AA69D] active:cursor-grabbing active:text-[#0E7C4F]"
-                onPointerDown={(event) => startDrag(event, token.symbol)}
-                onPointerUp={endDrag}
-                onPointerCancel={endDrag}
+        {tokens.map((token, index) => {
+            const hasBalance = tokenHasBalance(token);
+            const isMuted = isLive && !hasBalance;
+            const canReorder = !isMuted && orderableTokenCount > 1;
+            const previousOrderableIndex = getNextOrderableIndex(index, -1);
+            const nextOrderableIndex = getNextOrderableIndex(index, 1);
+
+            return (
+              <div
+                key={token.symbol}
+                ref={(element) => {
+                  rowRefs.current[token.symbol] = element;
+                }}
+                className={`flex min-h-[62px] items-center gap-3 rounded-[8px] border bg-white p-3 transition ${
+                  draggingSymbol === token.symbol
+                    ? "scale-[0.99] border-[#0E7C4F] shadow-sm"
+                    : "border-[#DDE4DC]"
+                } ${isMuted ? "opacity-45" : ""}`}
               >
-                <GripVertical className="h-5 w-5 shrink-0" />
-              </button>
-              <TokenMark token={token} />
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold">{token.symbol}</p>
-                <p className="truncate text-xs text-[#66736B]">{token.label}</p>
-                {token.requiresApproval && (
-                  <p className="text-[11px] text-[#9AA69D]">
-                    Allowance: {token.allowanceDisplay ?? "pendiente"}
+                <button
+                  type="button"
+                  aria-label={`Arrastrar ${token.symbol}`}
+                  disabled={!canReorder}
+                  className="touch-none rounded-full p-1 text-[#9AA69D] enabled:cursor-grab enabled:active:cursor-grabbing enabled:active:text-[#0E7C4F] disabled:cursor-not-allowed disabled:opacity-40"
+                  onPointerDown={(event) => startDrag(event, token.symbol)}
+                  onPointerUp={endDrag}
+                  onPointerCancel={endDrag}
+                >
+                  <GripVertical className="h-5 w-5 shrink-0" />
+                </button>
+                <TokenMark token={token} />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold">{token.symbol}</p>
+                  <p className="truncate text-xs text-[#66736B]">
+                    {token.label}
                   </p>
-                )}
+                  {isMuted ? (
+                    <p className="text-[11px] text-[#9AA69D]">Sin saldo</p>
+                  ) : (
+                    token.requiresApproval && (
+                      <p className="text-[11px] text-[#9AA69D]">
+                        Allowance: {token.allowanceDisplay ?? "pendiente"}
+                      </p>
+                    )
+                  )}
+                </div>
+                <p className="text-sm font-semibold">
+                  {token.balanceDisplay ?? formatUsd(token.balanceUsd)}
+                </p>
+                <div className="flex flex-col gap-1">
+                  <MoveButton
+                    label={`Subir ${token.symbol}`}
+                    disabled={!canReorder || previousOrderableIndex === -1}
+                    onClick={() => onReorder(index, previousOrderableIndex)}
+                    direction="up"
+                  />
+                  <MoveButton
+                    label={`Bajar ${token.symbol}`}
+                    disabled={!canReorder || nextOrderableIndex === -1}
+                    onClick={() => onReorder(index, nextOrderableIndex)}
+                    direction="down"
+                  />
+                </div>
               </div>
-              <p className="text-sm font-semibold">
-                {token.balanceDisplay ?? formatUsd(token.balanceUsd)}
-              </p>
-              <div className="flex flex-col gap-1">
-                <MoveButton
-                  label={`Subir ${token.symbol}`}
-                  disabled={index === 0}
-                  onClick={() => onMove(index, -1)}
-                  direction="up"
-                />
-                <MoveButton
-                  label={`Bajar ${token.symbol}`}
-                  disabled={index === tokens.length - 1}
-                  onClick={() => onMove(index, 1)}
-                  direction="down"
-                />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -714,14 +752,19 @@ function TokenActivationScreen({
 
       <div className="space-y-2.5 pb-16">
         {tokens.map((token) => {
+          const hasBalance = tokenHasBalance(token);
           const isActive = token.activation === "active";
           const isActivating = activating === token.symbol;
-          const canTokenApprove = Boolean(getApprovalCap(token, tokenPrices));
+          const canTokenApprove =
+            hasBalance && Boolean(getApprovalCap(token, tokenPrices));
+          const isMuted = !hasBalance;
 
           return (
             <div
               key={token.symbol}
-              className="flex min-h-[62px] items-center gap-3 rounded-[8px] border border-[#DDE4DC] bg-white p-3"
+              className={`flex min-h-[62px] items-center gap-3 rounded-[8px] border border-[#DDE4DC] bg-white p-3 ${
+                isMuted ? "opacity-45" : ""
+              }`}
             >
               <TokenMark token={token} />
               <div className="min-w-0 flex-1">
@@ -741,7 +784,9 @@ function TokenActivationScreen({
                       : "bg-[#F7F8F5] text-[#66736B]"
                 }`}
               >
-                {isActive ? (
+                {isMuted ? (
+                  "Sin saldo"
+                ) : isActive ? (
                   <>
                     <Check className="mr-1 h-3.5 w-3.5" />
                     Activo
