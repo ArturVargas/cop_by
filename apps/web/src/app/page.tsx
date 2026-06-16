@@ -193,6 +193,7 @@ async function waitForSquidStatus(
 export default function Home() {
   const targetNetwork = getTargetNetwork();
   const copmToken = targetNetwork.tokens.copm;
+  const approvalRouteKeyRef = useRef<string | null>(null);
   const [approvalTarget, setApprovalTarget] = useState<Address>();
   const [routeError, setRouteError] = useState<string | null>(null);
   const [tokenPrices, setTokenPrices] = useState<TokenUsdPrices>({});
@@ -285,7 +286,8 @@ export default function Home() {
   useEffect(() => {
     const sourceToken = tokens.find(
       (token) =>
-        token.hasBalance &&
+        tokenHasBalance(token) &&
+        token.activation !== "active" &&
         token.address &&
         getApprovalCap(token, tokenPrices)
     );
@@ -297,7 +299,6 @@ export default function Home() {
       !copmToken.address ||
       !sourceToken?.address
     ) {
-      setApprovalTarget(undefined);
       return;
     }
 
@@ -307,8 +308,18 @@ export default function Home() {
       sourceToken.balance && sourceCap > sourceToken.balance
         ? sourceToken.balance
         : sourceCap;
+    const routeKey = [
+      portfolio.address,
+      sourceToken.address,
+      fromAmount.toString(),
+      copmToken.address,
+      targetNetwork.squidChainId,
+    ].join(":");
+
+    if (approvalTarget || approvalRouteKeyRef.current === routeKey) return;
 
     let cancelled = false;
+    approvalRouteKeyRef.current = routeKey;
     setRouteError(null);
 
     getSquidRoute({
@@ -327,7 +338,7 @@ export default function Home() {
       })
       .catch(() => {
         if (cancelled) return;
-        setApprovalTarget(undefined);
+        approvalRouteKeyRef.current = null;
         setRouteError("No pudimos obtener una route de Squid.");
       });
 
@@ -336,6 +347,7 @@ export default function Home() {
     };
   }, [
     copmToken.address,
+    approvalTarget,
     isLivePortfolio,
     isLoadingPortfolio,
     portfolio.address,
