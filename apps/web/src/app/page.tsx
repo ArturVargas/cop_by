@@ -2,7 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { erc20Abi, isAddress, parseUnits, type Address } from "viem";
+import {
+  erc20Abi,
+  formatUnits,
+  isAddress,
+  parseUnits,
+  type Address,
+} from "viem";
 import { usePublicClient, useSendTransaction, useWriteContract } from "wagmi";
 import {
   ArrowLeftRight,
@@ -34,7 +40,7 @@ import {
 } from "@/lib/squid-config";
 
 const steps = ["Ordenar", "Activar", "Comprar"];
-const COP_PER_USD = 3810;
+const FALLBACK_COP_PER_USD = 3400;
 
 type SwapStatus = "idle" | "quoting" | "buying" | "complete" | "error";
 
@@ -74,8 +80,42 @@ function parseCopAmount(value: string) {
   return Number(value.replace(/[^\d.]/g, "")) || 0;
 }
 
-function getPurchaseUsdAmount(copAmount: string) {
-  return parseCopAmount(copAmount) / COP_PER_USD;
+function parseCopmUnits(value: string, decimals: number) {
+  return parseUnits(
+    String(floorToDecimals(parseCopAmount(value), decimals)),
+    decimals
+  );
+}
+
+function formatCopmUnits(value: bigint, decimals: number) {
+  const numeric = Number(formatUnits(value, decimals));
+
+  if (!Number.isFinite(numeric)) return formatUnits(value, decimals);
+
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 2,
+  }).format(numeric);
+}
+
+function formatCopPerUsd(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function getRouteToAmount(routeResult: SquidRouteResult) {
+  const toAmount = routeResult.route?.estimate?.toAmount;
+  if (!toAmount) return;
+
+  try {
+    return BigInt(toAmount);
+  } catch {
+    return;
+  }
+}
+
+function getPurchaseUsdAmount(copAmount: string, copPerUsd: number) {
+  return parseCopAmount(copAmount) / copPerUsd;
 }
 
 function getTokenAmountForUsd(
@@ -167,6 +207,7 @@ export default function Home() {
   const [activating, setActivating] = useState<string | null>(null);
   const [swapStatus, setSwapStatus] = useState<SwapStatus>("idle");
   const [swapError, setSwapError] = useState<string | null>(null);
+  const copPerUsd = tokenPrices.COP_PER_USD ?? FALLBACK_COP_PER_USD;
 
   const totalUsd = useMemo(
     () => tokens.reduce((sum, token) => sum + token.balanceUsd, 0),
@@ -379,27 +420,58 @@ export default function Home() {
         throw new Error("Wallet not ready");
       }
 
-      const usdAmount = getPurchaseUsdAmount(copAmount);
+      const usdAmount = getPurchaseUsdAmount(copAmount, copPerUsd);
       const sourceToken = getSwapSourceToken(tokens, tokenPrices, usdAmount);
       const fromAmount = sourceToken
         ? getTokenAmountForUsd(sourceToken, tokenPrices, usdAmount)
         : undefined;
+      const requestedCopm = parseCopmUnits(copAmount, copmToken.decimals);
 
       if (!sourceToken?.address || !fromAmount) {
         throw new Error("No approved source token");
       }
 
       setSwapStatus("quoting");
-      const routeResult = await getSquidRoute({
-        fromAddress: portfolio.address,
-        fromAmount: fromAmount.toString(),
-        fromChain: targetNetwork.squidChainId,
-        fromToken: sourceToken.address,
-        slippage: 0.3,
-        toAddress: portfolio.address,
-        toChain: targetNetwork.squidChainId,
-        toToken: copmToken.address,
-      });
+      let quotedFromAmount = fromAmount;
+      let routeResult: SquidRouteResult | undefined;
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        routeResult = await getSquidRoute({
+          fromAddress: portfolio.address,
+          fromAmount: quotedFromAmount.toString(),
+          fromChain: targetNetwork.squidChainId,
+          fromToken: sourceToken.address,
+          slippage: 0.3,
+          toAddress: portfolio.address,
+          toChain: targetNetwork.squidChainId,
+          toToken: copmToken.address,
+        });
+
+        const quotedCopm = getRouteToAmount(routeResult);
+        if (!quotedCopm || quotedCopm >= requestedCopm) break;
+
+        const nextFromAmount =
+          (quotedFromAmount * requestedCopm * 1005n) / (quotedCopm * 1000n) +
+          1n;
+
+        if (sourceToken.balance && nextFromAmount > sourceToken.balance) {
+          throw new Error("Saldo insuficiente para recibir el COPm solicitado.");
+        }
+
+        quotedFromAmount = nextFromAmount;
+      }
+
+      const quotedCopm = routeResult ? getRouteToAmount(routeResult) : undefined;
+      if (quotedCopm && quotedCopm < requestedCopm) {
+        throw new Error(
+          `La cotizacion actual solo entrega ${formatCopmUnits(
+            quotedCopm,
+            copmToken.decimals
+          )} COPm. Intenta con un monto menor.`
+        );
+      }
+
+      if (!routeResult) throw new Error("Squid route unavailable");
       const transactionRequest = routeResult.route?.transactionRequest;
 
       if (
@@ -420,10 +492,12 @@ export default function Home() {
       await publicClient?.waitForTransactionReceipt({ hash });
       await waitForSquidStatus(routeResult, hash, targetNetwork.squidChainId);
       setSwapStatus("complete");
-    } catch {
+    } catch (error) {
       setSwapStatus("error");
       setSwapError(
-        "No pudimos completar la compra. Revisa permisos, saldo y red."
+        error instanceof Error
+          ? error.message
+          : "No pudimos completar la compra. Revisa permisos, saldo y red."
       );
     }
   };
@@ -476,6 +550,7 @@ export default function Home() {
         {step === 2 && (
           <BuyCopmScreen
             copAmount={copAmount}
+            copPerUsd={copPerUsd}
             hasCompatibleTokens={hasCompatibleTokens}
             isLive={isLivePortfolio}
             totalUsd={effectiveTotalUsd}
@@ -895,6 +970,7 @@ function TokenEmptyStateMessage({ userAddress }: { userAddress?: string }) {
 
 function BuyCopmScreen({
   copAmount,
+  copPerUsd,
   hasCompatibleTokens,
   isLive,
   totalUsd,
@@ -908,6 +984,7 @@ function BuyCopmScreen({
   onDetailsToggle,
 }: {
   copAmount: string;
+  copPerUsd: number;
   hasCompatibleTokens: boolean;
   isLive: boolean;
   totalUsd: number;
@@ -921,7 +998,7 @@ function BuyCopmScreen({
   onDetailsToggle: () => void;
 }) {
   const hasNoFunds = isLive && !hasCompatibleTokens;
-  const requestedUsd = getPurchaseUsdAmount(copAmount);
+  const requestedUsd = getPurchaseUsdAmount(copAmount, copPerUsd);
   const hasInsufficientFunds =
     !hasNoFunds && totalUsd < requestedUsd;
   const selectedToken = getSwapSourceToken(tokens, tokenPrices, requestedUsd);
@@ -951,7 +1028,7 @@ function BuyCopmScreen({
           <span className="text-sm font-medium text-[#66736B]">aprox.</span>
         </p>
         <p className="mt-2 text-xs font-medium text-[#66736B]">
-          Tipo de cambio: {purchasePreview.exchangeRateLabel}
+          Tipo de cambio: 1 USD = {formatCopPerUsd(copPerUsd)} COPm
         </p>
       </div>
 

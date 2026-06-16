@@ -12,7 +12,7 @@ export async function GET() {
   }
 
   const response = await fetch(
-    "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd",
+    "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,usd-coin&vs_currencies=usd,cop",
     {
       headers: {
         "x-cg-demo-api-key": apiKey,
@@ -28,9 +28,11 @@ export async function GET() {
   const data = (await response.json()) as {
     bitcoin?: { usd?: number };
     ethereum?: { usd?: number };
+    "usd-coin"?: { cop?: number };
   };
 
   return NextResponse.json({
+    COP_PER_USD: data["usd-coin"]?.cop,
     ETH: data.ethereum?.usd,
     WBTC: data.bitcoin?.usd,
   });

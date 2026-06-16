@@ -22,6 +22,14 @@ export type SquidRouteParams = {
 };
 
 export type SquidRoute = {
+  estimate?: {
+    fromAmount?: string;
+    toAmount?: string;
+    toAmountMin?: string;
+    toAmountUSD?: string;
+    feeCosts?: Array<{ amountUsd?: string; name?: string }>;
+    gasCosts?: Array<{ amountUsd?: string; name?: string }>;
+  };
   quoteId?: string;
   transactionRequest?: {
     target?: string;

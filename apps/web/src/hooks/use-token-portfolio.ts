@@ -24,7 +24,9 @@ const TOKEN_COLORS: Record<SupportedTokenKey, string> = {
 
 const STABLE_SYMBOLS = new Set(["USDC", "USDT", "COPm"]);
 
-export type TokenUsdPrices = Partial<Record<"ETH" | "WBTC", number>>;
+export type TokenUsdPrices = Partial<
+  Record<"COP_PER_USD" | "ETH" | "WBTC", number>
+>;
 
 export type PortfolioTokenWithOnchain = PortfolioToken & {
   address?: Address;
