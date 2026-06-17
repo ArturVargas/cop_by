@@ -48,6 +48,7 @@ export type TokenPortfolioState = {
   isConnected: boolean;
   isCorrectNetwork: boolean;
   isLoading: boolean;
+  refetchAllowances: () => Promise<unknown>;
   tokens: PortfolioTokenWithOnchain[];
   totalUsd: number;
 };
@@ -90,14 +91,21 @@ function floorToDecimals(value: number, decimals: number) {
   return Math.floor(value * factor) / factor;
 }
 
+function toUnitsDecimal(value: number, decimals: number) {
+  if (!Number.isFinite(value) || value <= 0) return "0";
+  const places = Math.min(decimals, 18);
+  return (
+    floorToDecimals(value, decimals)
+      .toFixed(places)
+      .replace(/\.?0+$/, "") || "0"
+  );
+}
+
 function getApprovalCap(token: TokenConfig, prices: TokenUsdPrices) {
   const price = getTokenPrice(token, prices);
   if (!price) return;
   const tokenAmount = purchasePreview.activationCapUsd / price;
-  return parseUnits(
-    String(floorToDecimals(tokenAmount, token.decimals)),
-    token.decimals
-  );
+  return parseUnits(toUnitsDecimal(tokenAmount, token.decimals), token.decimals);
 }
 
 function getActivation(
@@ -236,6 +244,7 @@ export function useTokenPortfolio(
     isConnected,
     isCorrectNetwork,
     isLoading: balances.isLoading || allowances.isLoading,
+    refetchAllowances: allowances.refetch,
     tokens: liveTokens,
     totalUsd,
   };

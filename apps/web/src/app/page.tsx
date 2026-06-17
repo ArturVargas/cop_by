@@ -444,9 +444,12 @@ export default function Home() {
 
     const approvalCap = getApprovalCap(nextToken, tokenPrices);
     const approvalTarget = approvalTargets[nextToken.symbol];
+    const ownerAddress = portfolio.address;
     setActivating(nextToken.symbol);
 
     try {
+      if (!ownerAddress) return;
+
       if (
         nextToken.requiresApproval &&
         (!nextToken.address || !approvalTarget || !approvalCap)
@@ -454,20 +457,48 @@ export default function Home() {
         return;
       }
 
+      let confirmedAllowance = nextToken.allowance;
+
       if (nextToken.address && approvalTarget && approvalCap) {
-        const hash = await writeContractAsync({
-          address: nextToken.address as Address,
-          abi: erc20Abi,
-          functionName: "approve",
-          args: [approvalTarget, approvalCap],
-        });
-        await publicClient?.waitForTransactionReceipt({ hash });
+        let allowance = publicClient
+          ? ((await publicClient.readContract({
+              address: nextToken.address as Address,
+              abi: erc20Abi,
+              functionName: "allowance",
+              args: [ownerAddress, approvalTarget],
+            })) as bigint)
+          : (nextToken.allowance ?? 0n);
+
+        if (allowance < approvalCap) {
+          const hash = await writeContractAsync({
+            address: nextToken.address as Address,
+            abi: erc20Abi,
+            functionName: "approve",
+            args: [approvalTarget, approvalCap],
+          });
+          await publicClient?.waitForTransactionReceipt({ hash });
+          allowance = publicClient
+            ? ((await publicClient.readContract({
+                address: nextToken.address as Address,
+                abi: erc20Abi,
+                functionName: "allowance",
+                args: [ownerAddress, approvalTarget],
+              })) as bigint)
+            : approvalCap;
+        }
+
+        if (allowance < approvalCap) {
+          throw new Error("No pudimos confirmar el permiso onchain.");
+        }
+
+        confirmedAllowance = allowance;
       }
 
+      await portfolio.refetchAllowances();
       setTokens((currentTokens) =>
         currentTokens.map((token) =>
           token.symbol === nextToken.symbol
-            ? { ...token, activation: "active" }
+            ? { ...token, activation: "active", allowance: confirmedAllowance }
             : token
         )
       );
