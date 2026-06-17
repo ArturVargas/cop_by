@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { erc20Abi, formatUnits, parseUnits, type Address } from "viem";
+import { erc20Abi, formatUnits, type Address } from "viem";
 import { useReadContracts } from "wagmi";
 
 import { useWalletAdapter } from "@/hooks/use-wallet-adapter";
@@ -9,7 +9,6 @@ import type { SupportedTokenKey, TokenConfig } from "@/lib/network-config";
 import {
   formatUsd,
   mockPortfolioTokens,
-  purchasePreview,
   type PortfolioToken,
   type TokenActivation,
 } from "@/lib/mock-portfolio";
@@ -86,40 +85,14 @@ function estimateUsdValue(
   return Number(formatUnits(value, token.decimals)) * price;
 }
 
-function floorToDecimals(value: number, decimals: number) {
-  const factor = 10 ** Math.min(decimals, 8);
-  return Math.floor(value * factor) / factor;
-}
-
-function toUnitsDecimal(value: number, decimals: number) {
-  if (!Number.isFinite(value) || value <= 0) return "0";
-  const places = Math.min(decimals, 18);
-  return (
-    floorToDecimals(value, decimals)
-      .toFixed(places)
-      .replace(/\.?0+$/, "") || "0"
-  );
-}
-
-function getApprovalCap(token: TokenConfig, prices: TokenUsdPrices) {
-  const price = getTokenPrice(token, prices);
-  if (!price) return;
-  const tokenAmount = purchasePreview.activationCapUsd / price;
-  return parseUnits(toUnitsDecimal(tokenAmount, token.decimals), token.decimals);
-}
-
 function getActivation(
   token: TokenConfig,
   allowance: bigint | undefined,
-  prices: TokenUsdPrices,
   approvalTarget?: Address
 ): TokenActivation {
   if (!token.requiresApproval) return "active";
   if (!approvalTarget) return "ready";
-  const approvalCap = getApprovalCap(token, prices);
-  return approvalCap && allowance !== undefined && allowance >= approvalCap
-    ? "active"
-    : "ready";
+  return allowance !== undefined && allowance > 0n ? "active" : "ready";
 }
 
 export function useTokenPortfolio(
@@ -204,7 +177,6 @@ export function useTokenPortfolio(
         activation: getActivation(
           token,
           allowance,
-          prices,
           approvalTargets[token.symbol]
         ),
         color: TOKEN_COLORS[token.key],

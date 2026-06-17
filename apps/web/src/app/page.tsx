@@ -178,7 +178,12 @@ function getSwapSourceToken(
 ) {
   return tokens.find((token) => {
     const fromAmount = getTokenAmountForUsd(token, prices, usdAmount);
-    const isApproved = !token.isLive || token.activation === "active";
+    const isApproved =
+      !token.isLive ||
+      (token.activation === "active" &&
+        token.allowance !== undefined &&
+        fromAmount !== undefined &&
+        token.allowance >= fromAmount);
 
     return (
       isApproved &&
@@ -469,7 +474,7 @@ export default function Home() {
             })) as bigint)
           : (nextToken.allowance ?? 0n);
 
-        if (allowance < approvalCap) {
+        if (allowance <= 0n) {
           const hash = await writeContractAsync({
             address: nextToken.address as Address,
             abi: erc20Abi,
@@ -487,7 +492,7 @@ export default function Home() {
             : approvalCap;
         }
 
-        if (allowance < approvalCap) {
+        if (allowance <= 0n) {
           throw new Error("No pudimos confirmar el permiso onchain.");
         }
 
