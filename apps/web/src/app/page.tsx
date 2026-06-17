@@ -44,6 +44,13 @@ const FALLBACK_COP_PER_USD = 3400;
 const TOKEN_ORDER_STORAGE_KEY = "cop_by_token_order";
 
 type SwapStatus = "idle" | "quoting" | "buying" | "complete" | "error";
+type SwapProgress = "idle" | "quoting" | "confirming" | "processing";
+type SwapResult = {
+  copmBalance: string;
+  receivedCopm: string;
+  txHash: string;
+  txUrl: string;
+};
 
 function formatAddressPreview(address: string) {
   if (address.length <= 14) return address;
@@ -62,15 +69,22 @@ function floorToDecimals(value: number, decimals: number) {
   return Math.floor(value * factor) / factor;
 }
 
+function toUnitsDecimal(value: number, decimals: number) {
+  if (!Number.isFinite(value) || value <= 0) return "0";
+  const places = Math.min(decimals, 18);
+  return (
+    floorToDecimals(value, decimals)
+    .toFixed(places)
+      .replace(/\.?0+$/, "") || "0"
+  );
+}
+
 function getApprovalCap(token: PortfolioToken, prices: TokenUsdPrices) {
   if (!token.decimals) return;
   const price = getTokenPrice(token, prices);
   if (!price) return;
   const tokenAmount = purchasePreview.activationCapUsd / price;
-  return parseUnits(
-    String(floorToDecimals(tokenAmount, token.decimals)),
-    token.decimals
-  );
+  return parseUnits(toUnitsDecimal(tokenAmount, token.decimals), token.decimals);
 }
 
 function tokenHasBalance(token: PortfolioToken) {
@@ -86,10 +100,7 @@ function cleanCopInput(value: string) {
 }
 
 function parseCopmUnits(value: string, decimals: number) {
-  return parseUnits(
-    String(floorToDecimals(parseCopAmount(value), decimals)),
-    decimals
-  );
+  return parseUnits(toUnitsDecimal(parseCopAmount(value), decimals), decimals);
 }
 
 function formatCopmUnits(value: bigint, decimals: number) {
@@ -157,10 +168,7 @@ function getTokenAmountForUsd(
   const price = getTokenPrice(token, prices);
   if (!price) return;
 
-  return parseUnits(
-    String(floorToDecimals(usdAmount / price, token.decimals)),
-    token.decimals
-  );
+  return parseUnits(toUnitsDecimal(usdAmount / price, token.decimals), token.decimals);
 }
 
 function getSwapSourceToken(
@@ -192,11 +200,9 @@ async function waitForSquidStatus(
   const completedStatuses = new Set([
     "success",
     "partial_success",
-    "needs_gas",
-    "not_found",
   ]);
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
     try {
       const status = await getSquidStatus({
         transactionId,
@@ -210,10 +216,10 @@ async function waitForSquidStatus(
         status.squidTransactionStatus &&
         completedStatuses.has(status.squidTransactionStatus)
       ) {
-        return;
+        return status.squidTransactionStatus;
       }
     } catch {
-      return;
+      // keep polling briefly; Squid status can lag the receipt
     }
 
     await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -237,8 +243,10 @@ export default function Home() {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [activating, setActivating] = useState<string | null>(null);
   const [swapStatus, setSwapStatus] = useState<SwapStatus>("idle");
+  const [swapProgress, setSwapProgress] = useState<SwapProgress>("idle");
   const [swapError, setSwapError] = useState<string | null>(null);
   const [swapFeeUsd, setSwapFeeUsd] = useState<number | null>(null);
+  const [swapResult, setSwapResult] = useState<SwapResult | null>(null);
   const copPerUsd = tokenPrices.COP_PER_USD ?? FALLBACK_COP_PER_USD;
 
   const totalUsd = useMemo(
@@ -463,6 +471,7 @@ export default function Home() {
   const updateCopAmount = (value: string) => {
     setCopAmount(cleanCopInput(value));
     setSwapStatus("idle");
+    setSwapProgress("idle");
     setSwapError(null);
     setSwapFeeUsd(null);
   };
@@ -470,6 +479,8 @@ export default function Home() {
   const buyCopm = async () => {
     setSwapError(null);
     setSwapFeeUsd(null);
+    setSwapResult(null);
+    setSwapProgress("idle");
 
     try {
       if (!portfolio.address || !copmToken.address) {
@@ -488,6 +499,7 @@ export default function Home() {
       }
 
       setSwapStatus("quoting");
+      setSwapProgress("quoting");
       let quotedFromAmount = fromAmount;
       let routeResult: SquidRouteResult | undefined;
 
@@ -540,17 +552,56 @@ export default function Home() {
       }
 
       setSwapStatus("buying");
+      setSwapProgress("confirming");
+      const initialCopmBalance = publicClient
+        ? ((await publicClient.readContract({
+            address: copmToken.address,
+            abi: erc20Abi,
+            functionName: "balanceOf",
+            args: [portfolio.address],
+          })) as bigint)
+        : undefined;
       const hash = await sendTransactionAsync({
         to: transactionRequest.target,
         data: transactionRequest.data,
         value: BigInt(transactionRequest.value ?? "0"),
       });
 
+      setSwapProgress("processing");
       await publicClient?.waitForTransactionReceipt({ hash });
       await waitForSquidStatus(routeResult, hash, targetNetwork.squidChainId);
+      const finalCopmBalance = publicClient
+        ? ((await publicClient.readContract({
+            address: copmToken.address,
+            abi: erc20Abi,
+            functionName: "balanceOf",
+            args: [portfolio.address],
+          })) as bigint)
+        : undefined;
+      const receivedCopm =
+        initialCopmBalance !== undefined &&
+        finalCopmBalance !== undefined &&
+        finalCopmBalance >= initialCopmBalance
+          ? finalCopmBalance - initialCopmBalance
+          : quotedCopm;
+
+      setSwapResult({
+        copmBalance:
+          finalCopmBalance !== undefined
+            ? formatCopmUnits(finalCopmBalance, copmToken.decimals)
+            : "No disponible",
+        receivedCopm:
+          receivedCopm !== undefined
+            ? formatCopmUnits(receivedCopm, copmToken.decimals)
+            : formatCopmUnits(requestedCopm, copmToken.decimals),
+        txHash: hash,
+        txUrl: `${targetNetwork.blockExplorerUrl}/tx/${hash}`,
+      });
       setSwapStatus("complete");
+      setSwapProgress("idle");
     } catch (error) {
       setSwapStatus("error");
+      setSwapProgress("idle");
       setSwapError(
         error instanceof Error
           ? error.message
@@ -613,6 +664,7 @@ export default function Home() {
             totalUsd={effectiveTotalUsd}
             detailsOpen={detailsOpen}
             swapError={swapError}
+            swapProgress={swapProgress}
             swapStatus={swapStatus}
             swapFeeUsd={swapFeeUsd}
             tokenPrices={tokenPrices}
@@ -620,6 +672,12 @@ export default function Home() {
             onAmountChange={updateCopAmount}
             onBuy={buyCopm}
             onDetailsToggle={() => setDetailsOpen((open) => !open)}
+          />
+        )}
+        {swapResult && (
+          <SwapSuccessModal
+            result={swapResult}
+            onClose={() => setSwapResult(null)}
           />
         )}
       </section>
@@ -1028,6 +1086,7 @@ function BuyCopmScreen({
   totalUsd,
   detailsOpen,
   swapError,
+  swapProgress,
   swapStatus,
   swapFeeUsd,
   tokenPrices,
@@ -1043,6 +1102,7 @@ function BuyCopmScreen({
   totalUsd: number;
   detailsOpen: boolean;
   swapError: string | null;
+  swapProgress: SwapProgress;
   swapStatus: SwapStatus;
   swapFeeUsd: number | null;
   tokenPrices: TokenUsdPrices;
@@ -1065,13 +1125,23 @@ function BuyCopmScreen({
     requestedUsd > 0;
   const isBusy = swapStatus === "quoting" || swapStatus === "buying";
   const buttonLabel =
-    swapStatus === "quoting"
+    swapProgress === "quoting"
       ? "Cotizando"
-      : swapStatus === "buying"
-        ? "Comprando"
+      : swapProgress === "confirming"
+        ? "Confirma en tu wallet"
+      : swapProgress === "processing"
+        ? "Procesando compra"
         : swapStatus === "complete"
           ? "Completado"
           : "Comprar COPm";
+  const progressMessage =
+    swapProgress === "confirming"
+      ? "Confirma la transaccion en tu wallet para iniciar la compra."
+      : swapProgress === "processing"
+        ? "Tu transaccion fue enviada. Estamos esperando confirmacion y actualizando tu balance."
+      : swapProgress === "quoting"
+        ? "Estamos buscando la mejor ruta disponible."
+        : null;
 
   return (
     <div className="flex flex-1 flex-col">
@@ -1135,6 +1205,11 @@ function BuyCopmScreen({
         >
           {buttonLabel}
         </Button>
+        {progressMessage && (
+          <p className="mt-3 text-center text-sm font-medium text-[#66736B]">
+            {progressMessage}
+          </p>
+        )}
       </div>
 
       <div className="mt-3 overflow-hidden rounded-[8px] border border-[#DDE4DC] bg-white">
@@ -1204,6 +1279,54 @@ function TokenMark({ token }: { token: PortfolioToken }) {
       style={{ backgroundColor: token.color }}
     >
       {token.symbol.slice(0, 2)}
+    </div>
+  );
+}
+
+function SwapSuccessModal({
+  result,
+  onClose,
+}: {
+  result: SwapResult;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end bg-black/35 px-4 pb-4 sm:items-center sm:justify-center sm:pb-0">
+      <div className="w-full max-w-md rounded-[8px] bg-white p-4 shadow-xl">
+        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#E6F4EE] text-[#0E7C4F]">
+          <Check className="h-5 w-5" />
+        </div>
+        <h2 className="text-xl font-semibold">Compra completada</h2>
+        <p className="mt-2 text-sm text-[#66736B]">Recibiste</p>
+        <p className="mt-1 text-3xl font-semibold text-[#0E7C4F]">
+          {result.receivedCopm} COPm
+        </p>
+
+        <div className="mt-4 space-y-3 rounded-[8px] bg-[#F7F8F5] p-3 text-sm">
+          <div>
+            <p className="text-xs text-[#66736B]">Balance final</p>
+            <p className="font-semibold">{result.copmBalance} COPm</p>
+          </div>
+          <div>
+            <p className="text-xs text-[#66736B]">Transaccion</p>
+            <a
+              href={result.txUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="break-all font-semibold text-[#0E7C4F]"
+            >
+              {formatAddressPreview(result.txHash)}
+            </a>
+          </div>
+        </div>
+
+        <Button
+          className="mt-4 h-12 w-full rounded-[8px] bg-[#0E7C4F] text-base font-semibold text-white hover:bg-[#075C3A]"
+          onClick={onClose}
+        >
+          Listo
+        </Button>
+      </div>
     </div>
   );
 }
