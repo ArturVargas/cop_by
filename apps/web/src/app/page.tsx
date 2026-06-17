@@ -195,6 +195,23 @@ function getSwapSourceToken(
   });
 }
 
+function getSwapCandidateToken(
+  tokens: PortfolioToken[],
+  prices: TokenUsdPrices,
+  usdAmount: number
+) {
+  return tokens.find((token) => {
+    const fromAmount = getTokenAmountForUsd(token, prices, usdAmount);
+
+    return (
+      Boolean(token.address) &&
+      Boolean(fromAmount) &&
+      token.balanceUsd >= usdAmount &&
+      (!token.balance || !fromAmount || token.balance >= fromAmount)
+    );
+  });
+}
+
 async function waitForSquidStatus(
   routeResult: SquidRouteResult,
   transactionId: string,
@@ -435,6 +452,33 @@ export default function Home() {
     saveTokenOrder(updated);
   };
 
+  const waitForTokenAllowance = async (
+    token: PortfolioToken,
+    spender: Address,
+    minimum: bigint
+  ) => {
+    if (!publicClient || !portfolio.address || !token.address) return minimum;
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const allowance = (await publicClient.readContract({
+        address: token.address as Address,
+        abi: erc20Abi,
+        functionName: "allowance",
+        args: [portfolio.address, spender],
+      })) as bigint;
+
+      if (allowance >= minimum) return allowance;
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+
+    return (await publicClient.readContract({
+      address: token.address as Address,
+      abi: erc20Abi,
+      functionName: "allowance",
+      args: [portfolio.address, spender],
+    })) as bigint;
+  };
+
   const activateNextToken = async () => {
     const nextToken = tokens.find(
       (token) =>
@@ -465,14 +509,7 @@ export default function Home() {
       let confirmedAllowance = nextToken.allowance;
 
       if (nextToken.address && approvalTarget && approvalCap) {
-        let allowance = publicClient
-          ? ((await publicClient.readContract({
-              address: nextToken.address as Address,
-              abi: erc20Abi,
-              functionName: "allowance",
-              args: [ownerAddress, approvalTarget],
-            })) as bigint)
-          : (nextToken.allowance ?? 0n);
+        let allowance = await waitForTokenAllowance(nextToken, approvalTarget, 1n);
 
         if (allowance <= 0n) {
           const hash = await writeContractAsync({
@@ -482,14 +519,7 @@ export default function Home() {
             args: [approvalTarget, approvalCap],
           });
           await publicClient?.waitForTransactionReceipt({ hash });
-          allowance = publicClient
-            ? ((await publicClient.readContract({
-                address: nextToken.address as Address,
-                abi: erc20Abi,
-                functionName: "allowance",
-                args: [ownerAddress, approvalTarget],
-              })) as bigint)
-            : approvalCap;
+          allowance = await waitForTokenAllowance(nextToken, approvalTarget, 1n);
         }
 
         if (allowance <= 0n) {
@@ -518,6 +548,62 @@ export default function Home() {
     setSwapProgress("idle");
     setSwapError(null);
     setSwapFeeUsd(null);
+  };
+
+  const approvePurchaseToken = async () => {
+    setSwapError(null);
+
+    try {
+      if (!portfolio.address) throw new Error("Wallet not ready");
+
+      const usdAmount = getPurchaseUsdAmount(copAmount, copPerUsd);
+      const token = getSwapCandidateToken(tokens, tokenPrices, usdAmount);
+      const fromAmount = token
+        ? getTokenAmountForUsd(token, tokenPrices, usdAmount)
+        : undefined;
+      const approvalTarget = token ? approvalTargets[token.symbol] : undefined;
+
+      if (!token?.address || !fromAmount || !approvalTarget) {
+        throw new Error("No pudimos preparar el permiso para este token.");
+      }
+
+      setActivating(token.symbol);
+
+      const hash = await writeContractAsync({
+        address: token.address as Address,
+        abi: erc20Abi,
+        functionName: "approve",
+        args: [approvalTarget, fromAmount],
+      });
+      await publicClient?.waitForTransactionReceipt({ hash });
+
+      const allowance = await waitForTokenAllowance(
+        token,
+        approvalTarget,
+        fromAmount
+      );
+
+      if (allowance < fromAmount) {
+        throw new Error("El permiso aprobado no alcanza para esta compra.");
+      }
+
+      await portfolio.refetchAllowances();
+      setTokens((currentTokens) =>
+        currentTokens.map((currentToken) =>
+          currentToken.symbol === token.symbol
+            ? { ...currentToken, activation: "active", allowance }
+            : currentToken
+        )
+      );
+    } catch (error) {
+      setSwapError(
+        error instanceof Error
+          ? error.message
+          : "No pudimos activar el token para esta compra."
+      );
+    } finally {
+      setActivating(null);
+    }
   };
 
   const buyCopm = async () => {
@@ -713,7 +799,10 @@ export default function Home() {
             swapFeeUsd={swapFeeUsd}
             tokenPrices={tokenPrices}
             tokens={tokens}
+            activating={activating}
+            approvalTargets={approvalTargets}
             onAmountChange={updateCopAmount}
+            onApprovePurchase={approvePurchaseToken}
             onBuy={buyCopm}
             onDetailsToggle={() => setDetailsOpen((open) => !open)}
           />
@@ -1141,7 +1230,10 @@ function BuyCopmScreen({
   swapFeeUsd,
   tokenPrices,
   tokens,
+  activating,
+  approvalTargets,
   onAmountChange,
+  onApprovePurchase,
   onBuy,
   onDetailsToggle,
 }: {
@@ -1157,7 +1249,10 @@ function BuyCopmScreen({
   swapFeeUsd: number | null;
   tokenPrices: TokenUsdPrices;
   tokens: PortfolioToken[];
+  activating: string | null;
+  approvalTargets: Partial<Record<string, Address>>;
   onAmountChange: (value: string) => void;
+  onApprovePurchase: () => void;
   onBuy: () => void;
   onDetailsToggle: () => void;
 }) {
@@ -1166,24 +1261,35 @@ function BuyCopmScreen({
   const hasInsufficientFunds =
     !hasNoFunds && totalUsd < requestedUsd;
   const selectedToken = getSwapSourceToken(tokens, tokenPrices, requestedUsd);
+  const approvalToken =
+    selectedToken ?? getSwapCandidateToken(tokens, tokenPrices, requestedUsd);
   const needsApprovedToken =
     isLive && !hasNoFunds && !hasInsufficientFunds && !selectedToken;
+  const canApprovePurchase =
+    Boolean(approvalToken && approvalTargets[approvalToken.symbol]) &&
+    needsApprovedToken &&
+    requestedUsd > 0;
   const canBuy =
     !hasNoFunds &&
     !hasInsufficientFunds &&
     !needsApprovedToken &&
     requestedUsd > 0;
   const isBusy = swapStatus === "quoting" || swapStatus === "buying";
+  const isApproving = Boolean(activating && approvalToken?.symbol === activating);
   const buttonLabel =
-    swapProgress === "quoting"
-      ? "Cotizando"
-      : swapProgress === "confirming"
-        ? "Confirma en tu wallet"
-      : swapProgress === "processing"
-        ? "Procesando compra"
-        : swapStatus === "complete"
-          ? "Completado"
-          : "Comprar COPm";
+    isApproving
+      ? "Confirma en tu wallet"
+      : needsApprovedToken
+        ? "Activar token"
+        : swapProgress === "quoting"
+          ? "Cotizando"
+          : swapProgress === "confirming"
+            ? "Confirma en tu wallet"
+            : swapProgress === "processing"
+              ? "Procesando compra"
+              : swapStatus === "complete"
+                ? "Completado"
+                : "Comprar COPm";
   const progressMessage =
     swapProgress === "confirming"
       ? "Confirma la transaccion en tu wallet para iniciar la compra."
@@ -1232,7 +1338,7 @@ function BuyCopmScreen({
         )}
         {needsApprovedToken && (
           <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
-            Activa un token con saldo suficiente antes de comprar COPm.
+            Activa permiso suficiente para comprar este monto de COPm.
           </div>
         )}
         {swapError && (
@@ -1250,8 +1356,8 @@ function BuyCopmScreen({
 
         <Button
           className="mt-4 h-12 w-full rounded-[8px] bg-[#0E7C4F] text-base font-semibold text-white hover:bg-[#075C3A]"
-          disabled={!canBuy || isBusy}
-          onClick={onBuy}
+          disabled={isBusy || isApproving || (!canBuy && !canApprovePurchase)}
+          onClick={needsApprovedToken ? onApprovePurchase : onBuy}
         >
           {buttonLabel}
         </Button>
