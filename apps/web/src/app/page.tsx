@@ -42,6 +42,8 @@ import {
 const steps = ["Ordenar", "Activar", "Comprar"];
 const FALLBACK_COP_PER_USD = 3400;
 const TOKEN_ORDER_STORAGE_KEY = "cop_by_token_order";
+const SQUID_CELO_APPROVAL_TARGET =
+  "0xce16F69375520ab01377ce7B88f5BA8C48F8D666" as Address;
 
 type SwapStatus = "idle" | "quoting" | "buying" | "complete" | "error";
 type SwapProgress = "idle" | "quoting" | "confirming" | "processing";
@@ -51,6 +53,16 @@ type SwapResult = {
   txHash: string;
   txUrl: string;
 };
+
+function getDefaultApprovalTargets(targetNetwork: ReturnType<typeof getTargetNetwork>) {
+  if (targetNetwork.key !== "celo") return {};
+
+  return Object.fromEntries(
+    Object.values(targetNetwork.tokens)
+      .filter((token) => token.requiresApproval)
+      .map((token) => [token.symbol, SQUID_CELO_APPROVAL_TARGET])
+  ) as Partial<Record<string, Address>>;
+}
 
 function formatAddressPreview(address: string) {
   if (address.length <= 14) return address;
@@ -254,7 +266,7 @@ export default function Home() {
   const approvalRouteKeyRef = useRef<string | null>(null);
   const [approvalTargets, setApprovalTargets] = useState<
     Partial<Record<string, Address>>
-  >({});
+  >(() => getDefaultApprovalTargets(targetNetwork));
   const [routeError, setRouteError] = useState<string | null>(null);
   const [tokenPrices, setTokenPrices] = useState<TokenUsdPrices>({});
   const portfolio = useTokenPortfolio(approvalTargets, tokenPrices);
