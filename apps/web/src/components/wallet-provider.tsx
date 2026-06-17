@@ -7,7 +7,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { WagmiProvider, createConfig, http } from "wagmi";
 
-import { NETWORK_CONFIG, SUPPORTED_CHAINS } from "@/lib/network-config";
+import {
+  NETWORK_CONFIG,
+  SUPPORTED_CHAINS,
+  getTargetNetwork,
+} from "@/lib/network-config";
 
 const connectors = connectorsForWallets(
   [
@@ -18,7 +22,7 @@ const connectors = connectorsForWallets(
   ],
   {
     appName: "cop_by",
-    projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID!,
+    projectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID!,
   }
 );
 
@@ -46,7 +50,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   return (
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider>
+        <RainbowKitProvider initialChain={getTargetNetwork().chain}>
           {children}
         </RainbowKitProvider>
       </QueryClientProvider>

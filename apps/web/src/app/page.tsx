@@ -41,6 +41,7 @@ import {
 
 const steps = ["Ordenar", "Activar", "Comprar"];
 const FALLBACK_COP_PER_USD = 3400;
+const TOKEN_ORDER_STORAGE_KEY = "cop_by_token_order";
 
 type SwapStatus = "idle" | "quoting" | "buying" | "complete" | "error";
 
@@ -80,6 +81,10 @@ function parseCopAmount(value: string) {
   return Number(value.replace(/[^\d.]/g, "")) || 0;
 }
 
+function cleanCopInput(value: string) {
+  return value.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+}
+
 function parseCopmUnits(value: string, decimals: number) {
   return parseUnits(
     String(floorToDecimals(parseCopAmount(value), decimals)),
@@ -114,8 +119,33 @@ function getRouteToAmount(routeResult: SquidRouteResult) {
   }
 }
 
+function getRouteFeeUsd(routeResult: SquidRouteResult) {
+  const costs = routeResult.route?.estimate?.feeCosts ?? [];
+  const total = costs.reduce((sum, cost) => sum + Number(cost.amountUsd ?? 0), 0);
+  return Number.isFinite(total) ? total : 0;
+}
+
 function getPurchaseUsdAmount(copAmount: string, copPerUsd: number) {
   return parseCopAmount(copAmount) / copPerUsd;
+}
+
+function sortTokensBySavedOrder(tokens: PortfolioToken[]) {
+  if (typeof window === "undefined") return tokens;
+  const saved = window.localStorage.getItem(TOKEN_ORDER_STORAGE_KEY);
+  if (!saved) return tokens;
+  const order = new Map(saved.split(",").map((symbol, index) => [symbol, index]));
+  return [...tokens].sort(
+    (a, b) =>
+      (order.get(a.symbol) ?? Number.MAX_SAFE_INTEGER) -
+      (order.get(b.symbol) ?? Number.MAX_SAFE_INTEGER)
+  );
+}
+
+function saveTokenOrder(tokens: PortfolioToken[]) {
+  window.localStorage.setItem(
+    TOKEN_ORDER_STORAGE_KEY,
+    tokens.map((token) => token.symbol).join(",")
+  );
 }
 
 function getTokenAmountForUsd(
@@ -208,6 +238,7 @@ export default function Home() {
   const [activating, setActivating] = useState<string | null>(null);
   const [swapStatus, setSwapStatus] = useState<SwapStatus>("idle");
   const [swapError, setSwapError] = useState<string | null>(null);
+  const [swapFeeUsd, setSwapFeeUsd] = useState<number | null>(null);
   const copPerUsd = tokenPrices.COP_PER_USD ?? FALLBACK_COP_PER_USD;
 
   const totalUsd = useMemo(
@@ -232,6 +263,16 @@ export default function Home() {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [step]);
+
+  useEffect(() => {
+    setTokens((currentTokens) => sortTokensBySavedOrder(currentTokens));
+  }, []);
+
+  useEffect(() => {
+    if (isLivePortfolio && !isLoadingPortfolio && hasCompatibleTokens && allActive) {
+      setStep(2);
+    }
+  }, [allActive, hasCompatibleTokens, isLivePortfolio, isLoadingPortfolio]);
 
   useEffect(() => {
     fetch("/api/token-prices")
@@ -262,7 +303,7 @@ export default function Home() {
             (orderedToken) => orderedToken.symbol === token.symbol
           )
       );
-      const nextTokens = [...orderedTokens, ...missingTokens];
+      const nextTokens = sortTokensBySavedOrder([...orderedTokens, ...missingTokens]);
 
       if (
         nextTokens.length === currentTokens.length &&
@@ -371,6 +412,7 @@ export default function Home() {
     const [item] = updated.splice(fromIndex, 1);
     updated.splice(toIndex, 0, item);
     setTokens(updated);
+    saveTokenOrder(updated);
   };
 
   const activateNextToken = async () => {
@@ -419,13 +461,15 @@ export default function Home() {
   };
 
   const updateCopAmount = (value: string) => {
-    setCopAmount(value);
+    setCopAmount(cleanCopInput(value));
     setSwapStatus("idle");
     setSwapError(null);
+    setSwapFeeUsd(null);
   };
 
   const buyCopm = async () => {
     setSwapError(null);
+    setSwapFeeUsd(null);
 
     try {
       if (!portfolio.address || !copmToken.address) {
@@ -458,6 +502,7 @@ export default function Home() {
           toChain: targetNetwork.squidChainId,
           toToken: copmToken.address,
         });
+        setSwapFeeUsd(getRouteFeeUsd(routeResult));
 
         const quotedCopm = getRouteToAmount(routeResult);
         if (!quotedCopm || quotedCopm >= requestedCopm) break;
@@ -569,6 +614,7 @@ export default function Home() {
             detailsOpen={detailsOpen}
             swapError={swapError}
             swapStatus={swapStatus}
+            swapFeeUsd={swapFeeUsd}
             tokenPrices={tokenPrices}
             tokens={tokens}
             onAmountChange={updateCopAmount}
@@ -750,13 +796,7 @@ function TokenOrderScreen({
                   </p>
                   {isMuted ? (
                     <p className="text-[11px] text-[#9AA69D]">Sin saldo</p>
-                  ) : (
-                    token.requiresApproval && (
-                      <p className="text-[11px] text-[#9AA69D]">
-                        Allowance: {token.allowanceDisplay ?? "pendiente"}
-                      </p>
-                    )
-                  )}
+                  ) : null}
                 </div>
                 <p className="text-sm font-semibold">
                   {token.balanceDisplay ?? formatUsd(token.balanceUsd)}
@@ -989,6 +1029,7 @@ function BuyCopmScreen({
   detailsOpen,
   swapError,
   swapStatus,
+  swapFeeUsd,
   tokenPrices,
   tokens,
   onAmountChange,
@@ -1003,6 +1044,7 @@ function BuyCopmScreen({
   detailsOpen: boolean;
   swapError: string | null;
   swapStatus: SwapStatus;
+  swapFeeUsd: number | null;
   tokenPrices: TokenUsdPrices;
   tokens: PortfolioToken[];
   onAmountChange: (value: string) => void;
@@ -1137,7 +1179,9 @@ function BuyCopmScreen({
             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
               <div className="rounded-[8px] bg-[#F7F8F5] p-3">
                 <p className="text-xs text-[#66736B]">Fee</p>
-                <p className="mt-1 font-semibold">{purchasePreview.feeLabel}</p>
+                <p className="mt-1 font-semibold">
+                  {swapFeeUsd === null ? "Por cotizar" : formatUsd(swapFeeUsd)}
+                </p>
               </div>
               <div className="rounded-[8px] bg-[#F7F8F5] p-3">
                 <p className="text-xs text-[#66736B]">Slippage max</p>

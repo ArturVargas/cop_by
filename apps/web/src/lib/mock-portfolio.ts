@@ -49,8 +49,7 @@ export const mockPortfolioTokens: PortfolioToken[] = [
 ];
 
 export const purchasePreview = {
-  copAmount: "200,000",
-  feeLabel: "1.5% · $0.79",
+  copAmount: "200000",
   slippageLabel: "0.3%",
   activationCapUsd: 450,
 };

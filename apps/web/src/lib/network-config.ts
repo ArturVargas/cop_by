@@ -161,7 +161,7 @@ export function getConfiguredNetworkKey(): SupportedNetworkKey {
   const configured = process.env.NEXT_PUBLIC_APP_NETWORK;
   return configured === "celo" || configured === "celo-sepolia"
     ? configured
-    : "celo-sepolia";
+    : "celo";
 }
 
 export function getNetworkByChainId(chainId?: number) {
