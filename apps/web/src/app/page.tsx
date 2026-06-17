@@ -360,8 +360,8 @@ export default function Home() {
     const sourceToken = tokens.find(
       (token) =>
         tokenHasBalance(token) &&
-        token.activation !== "active" &&
         token.address &&
+        !approvalTargets[token.symbol] &&
         getApprovalCap(token, tokenPrices)
     );
 
@@ -389,7 +389,7 @@ export default function Home() {
       targetNetwork.squidChainId,
     ].join(":");
 
-    if (approvalTargets[sourceToken.symbol] || approvalRouteKeyRef.current === routeKey) return;
+    if (approvalRouteKeyRef.current === routeKey) return;
 
     let cancelled = false;
     approvalRouteKeyRef.current = routeKey;
@@ -1265,6 +1265,9 @@ function BuyCopmScreen({
     selectedToken ?? getSwapCandidateToken(tokens, tokenPrices, requestedUsd);
   const needsApprovedToken =
     isLive && !hasNoFunds && !hasInsufficientFunds && !selectedToken;
+  const isPreparingApproval =
+    needsApprovedToken &&
+    (approvalToken ? !approvalTargets[approvalToken.symbol] : false);
   const canApprovePurchase =
     Boolean(approvalToken && approvalTargets[approvalToken.symbol]) &&
     needsApprovedToken &&
@@ -1280,7 +1283,9 @@ function BuyCopmScreen({
     isApproving
       ? "Confirma en tu wallet"
       : needsApprovedToken
-        ? "Activar token"
+        ? isPreparingApproval
+          ? "Preparando permiso"
+          : "Activar token"
         : swapProgress === "quoting"
           ? "Cotizando"
           : swapProgress === "confirming"
