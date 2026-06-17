@@ -230,10 +230,12 @@ export default function Home() {
   const targetNetwork = getTargetNetwork();
   const copmToken = targetNetwork.tokens.copm;
   const approvalRouteKeyRef = useRef<string | null>(null);
-  const [approvalTarget, setApprovalTarget] = useState<Address>();
+  const [approvalTargets, setApprovalTargets] = useState<
+    Partial<Record<string, Address>>
+  >({});
   const [routeError, setRouteError] = useState<string | null>(null);
   const [tokenPrices, setTokenPrices] = useState<TokenUsdPrices>({});
-  const portfolio = useTokenPortfolio(approvalTarget, tokenPrices);
+  const portfolio = useTokenPortfolio(approvalTargets, tokenPrices);
   const publicClient = usePublicClient();
   const { sendTransactionAsync } = useSendTransaction();
   const { writeContractAsync } = useWriteContract();
@@ -365,7 +367,7 @@ export default function Home() {
       targetNetwork.squidChainId,
     ].join(":");
 
-    if (approvalTarget || approvalRouteKeyRef.current === routeKey) return;
+    if (approvalTargets[sourceToken.symbol] || approvalRouteKeyRef.current === routeKey) return;
 
     let cancelled = false;
     approvalRouteKeyRef.current = routeKey;
@@ -382,7 +384,12 @@ export default function Home() {
     })
       .then(({ approvalTarget: nextTarget }) => {
         if (cancelled) return;
-        setApprovalTarget(nextTarget);
+        if (nextTarget) {
+          setApprovalTargets((current) => ({
+            ...current,
+            [sourceToken.symbol]: nextTarget,
+          }));
+        }
         if (!nextTarget) setRouteError("Squid no devolvio approval target.");
       })
       .catch(() => {
@@ -396,7 +403,7 @@ export default function Home() {
     };
   }, [
     copmToken.address,
-    approvalTarget,
+    approvalTargets,
     isLivePortfolio,
     isLoadingPortfolio,
     portfolio.address,
@@ -436,6 +443,7 @@ export default function Home() {
     }
 
     const approvalCap = getApprovalCap(nextToken, tokenPrices);
+    const approvalTarget = approvalTargets[nextToken.symbol];
     setActivating(nextToken.symbol);
 
     try {
@@ -646,7 +654,7 @@ export default function Home() {
           <TokenActivationScreen
             tokens={tokens}
             allActive={allActive}
-            approvalTarget={approvalTarget}
+            approvalTargets={approvalTargets}
             activating={activating}
             routeError={routeError}
             tokenPrices={tokenPrices}
@@ -895,7 +903,7 @@ function TokenOrderScreen({
 function TokenActivationScreen({
   tokens,
   allActive,
-  approvalTarget,
+  approvalTargets,
   activating,
   routeError,
   tokenPrices,
@@ -904,14 +912,20 @@ function TokenActivationScreen({
 }: {
   tokens: PortfolioToken[];
   allActive: boolean;
-  approvalTarget?: Address;
+  approvalTargets: Partial<Record<string, Address>>;
   activating: string | null;
   routeError: string | null;
   tokenPrices: TokenUsdPrices;
   onActivate: () => void;
   onSkip: () => void;
 }) {
-  const canApprove = Boolean(approvalTarget);
+  const nextToken = tokens.find(
+    (token) =>
+      tokenHasBalance(token) &&
+      token.activation !== "active" &&
+      getApprovalCap(token, tokenPrices)
+  );
+  const canApprove = !nextToken || Boolean(approvalTargets[nextToken.symbol]);
 
   return (
     <div className="flex flex-1 flex-col">

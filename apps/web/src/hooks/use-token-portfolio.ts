@@ -42,7 +42,7 @@ export type PortfolioTokenWithOnchain = PortfolioToken & {
 
 export type TokenPortfolioState = {
   address?: Address;
-  approvalTarget?: Address;
+  approvalTargets?: Partial<Record<string, Address>>;
   isAllowanceLoading: boolean;
   isBalanceLoading: boolean;
   isConnected: boolean;
@@ -115,7 +115,7 @@ function getActivation(
 }
 
 export function useTokenPortfolio(
-  approvalTarget?: Address,
+  approvalTargets: Partial<Record<string, Address>> = {},
   prices: TokenUsdPrices = {}
 ): TokenPortfolioState {
   const { address, currentNetwork, isConnected, isCorrectNetwork } =
@@ -137,13 +137,16 @@ export function useTokenPortfolio(
   }));
 
   const allowanceContracts = configuredTokens
-    .filter((token) => token.requiresApproval && approvalTarget)
+    .filter((token) => token.requiresApproval && approvalTargets[token.symbol])
     .map((token) => ({
       address: token.address,
       abi: erc20Abi,
       functionName: "allowance",
-      args: [address, approvalTarget],
+      args: [address, approvalTargets[token.symbol]],
     }));
+  const allowanceSymbols = configuredTokens
+    .filter((token) => token.requiresApproval && approvalTargets[token.symbol])
+    .map((token) => token.symbol);
 
   const shouldRead = Boolean(
     isConnected && isCorrectNetwork && address && currentNetwork
@@ -160,7 +163,7 @@ export function useTokenPortfolio(
     contracts: allowanceContracts,
     query: {
       enabled:
-        shouldRead && Boolean(approvalTarget) && allowanceContracts.length > 0,
+        shouldRead && allowanceContracts.length > 0,
     },
   });
 
@@ -177,20 +180,25 @@ export function useTokenPortfolio(
       }));
     }
 
-    let allowanceIndex = 0;
-
     return configuredTokens.map((token, index) => {
       const balance = balances.data?.[index]?.result as bigint | undefined;
-      const allowance = token.requiresApproval
-        ? (allowances.data?.[allowanceIndex++]?.result as bigint | undefined)
-        : undefined;
+      const allowanceDataIndex = allowanceSymbols.indexOf(token.symbol);
+      const allowance =
+        allowanceDataIndex >= 0
+          ? (allowances.data?.[allowanceDataIndex]?.result as bigint | undefined)
+          : undefined;
       const balanceUsd = estimateUsdValue(balance, token, prices);
 
       return {
         symbol: token.symbol,
         label: token.name,
         balanceUsd,
-        activation: getActivation(token, allowance, prices, approvalTarget),
+        activation: getActivation(
+          token,
+          allowance,
+          prices,
+          approvalTargets[token.symbol]
+        ),
         color: TOKEN_COLORS[token.key],
         address: token.address,
         allowance,
@@ -209,7 +217,8 @@ export function useTokenPortfolio(
     allowances.data,
     balances.data,
     configuredTokens,
-    approvalTarget,
+    approvalTargets,
+    allowanceSymbols,
     prices,
     shouldRead,
   ]);
@@ -221,7 +230,7 @@ export function useTokenPortfolio(
 
   return {
     address,
-    approvalTarget,
+    approvalTargets,
     isAllowanceLoading: allowances.isLoading,
     isBalanceLoading: balances.isLoading,
     isConnected,
