@@ -53,6 +53,11 @@ type SwapResult = {
   txHash: string;
   txUrl: string;
 };
+type SwapPlanLeg = {
+  token: PortfolioToken;
+  usdAmount: number;
+  fromAmount: bigint;
+};
 
 function getDefaultApprovalTargets(targetNetwork: ReturnType<typeof getTargetNetwork>) {
   if (targetNetwork.key !== "celo") return {};
@@ -183,6 +188,19 @@ function getTokenAmountForUsd(
   return parseUnits(toUnitsDecimal(usdAmount / price, token.decimals), token.decimals);
 }
 
+function getTokenAllowanceUsd(token: PortfolioToken, prices: TokenUsdPrices) {
+  if (!token.allowance || !token.decimals) return 0;
+  const price = getTokenPrice(token, prices);
+  if (!price) return 0;
+  return Number(formatUnits(token.allowance, token.decimals)) * price;
+}
+
+function getTokenSpendableUsd(token: PortfolioToken, prices: TokenUsdPrices) {
+  if (!token.isLive) return token.balanceUsd;
+  if (token.activation !== "active") return 0;
+  return Math.min(token.balanceUsd, getTokenAllowanceUsd(token, prices));
+}
+
 function getSwapSourceToken(
   tokens: PortfolioToken[],
   prices: TokenUsdPrices,
@@ -207,21 +225,66 @@ function getSwapSourceToken(
   });
 }
 
-function getSwapCandidateToken(
+function getApprovedSwapPlan(
+  tokens: PortfolioToken[],
+  prices: TokenUsdPrices,
+  usdAmount: number
+): SwapPlanLeg[] {
+  const sourceToken = getSwapSourceToken(tokens, prices, usdAmount);
+  const singleFromAmount = sourceToken
+    ? getTokenAmountForUsd(sourceToken, prices, usdAmount)
+    : undefined;
+
+  if (sourceToken && singleFromAmount) {
+    return [{ token: sourceToken, usdAmount, fromAmount: singleFromAmount }];
+  }
+
+  const plan: SwapPlanLeg[] = [];
+  let remainingUsd = usdAmount;
+
+  for (const token of tokens) {
+    const spendUsd = Math.min(getTokenSpendableUsd(token, prices), remainingUsd);
+    const fromAmount = getTokenAmountForUsd(token, prices, spendUsd);
+    if (spendUsd <= 0 || !fromAmount || !token.address) continue;
+
+    plan.push({ token, usdAmount: spendUsd, fromAmount });
+    remainingUsd -= spendUsd;
+    if (remainingUsd <= 0.01) return plan;
+  }
+
+  return plan;
+}
+
+function getSwapApprovalCandidate(
   tokens: PortfolioToken[],
   prices: TokenUsdPrices,
   usdAmount: number
 ) {
-  return tokens.find((token) => {
-    const fromAmount = getTokenAmountForUsd(token, prices, usdAmount);
+  let remainingUsd = usdAmount;
 
-    return (
+  for (const token of tokens) {
+    const neededUsd = Math.min(token.balanceUsd, remainingUsd);
+    const fromAmount = getTokenAmountForUsd(token, prices, neededUsd);
+    const hasEnoughBalance =
       Boolean(token.address) &&
       Boolean(fromAmount) &&
-      token.balanceUsd >= usdAmount &&
-      (!token.balance || !fromAmount || token.balance >= fromAmount)
-    );
-  });
+      (!token.balance || !fromAmount || token.balance >= fromAmount);
+
+    if (hasEnoughBalance && getTokenSpendableUsd(token, prices) < neededUsd) {
+      return { token, usdAmount: neededUsd, fromAmount };
+    }
+
+    remainingUsd -= Math.min(getTokenSpendableUsd(token, prices), neededUsd);
+    if (remainingUsd <= 0.01) return;
+  }
+}
+
+function getSwapPlanTokenSymbols(plan: SwapPlanLeg[]) {
+  return plan.map((leg) => leg.token.symbol).join(" + ");
+}
+
+function getSwapPlanUsd(plan: SwapPlanLeg[]) {
+  return plan.reduce((sum, leg) => sum + leg.usdAmount, 0);
 }
 
 async function waitForSquidStatus(
@@ -569,10 +632,13 @@ export default function Home() {
       if (!portfolio.address) throw new Error("Wallet not ready");
 
       const usdAmount = getPurchaseUsdAmount(copAmount, copPerUsd);
-      const token = getSwapCandidateToken(tokens, tokenPrices, usdAmount);
-      const fromAmount = token
-        ? getTokenAmountForUsd(token, tokenPrices, usdAmount)
-        : undefined;
+      const approvalCandidate = getSwapApprovalCandidate(
+        tokens,
+        tokenPrices,
+        usdAmount
+      );
+      const token = approvalCandidate?.token;
+      const fromAmount = approvalCandidate?.fromAmount;
       const approvalTarget = token ? approvalTargets[token.symbol] : undefined;
 
       if (!token?.address || !fromAmount || !approvalTarget) {
@@ -630,71 +696,15 @@ export default function Home() {
       }
 
       const usdAmount = getPurchaseUsdAmount(copAmount, copPerUsd);
-      const sourceToken = getSwapSourceToken(tokens, tokenPrices, usdAmount);
-      const fromAmount = sourceToken
-        ? getTokenAmountForUsd(sourceToken, tokenPrices, usdAmount)
-        : undefined;
+      const swapPlan = getApprovedSwapPlan(tokens, tokenPrices, usdAmount);
       const requestedCopm = parseCopmUnits(copAmount, copmToken.decimals);
 
-      if (!sourceToken?.address || !fromAmount) {
+      if (getSwapPlanUsd(swapPlan) + 0.01 < usdAmount) {
         throw new Error("No approved source token");
       }
 
       setSwapStatus("quoting");
       setSwapProgress("quoting");
-      let quotedFromAmount = fromAmount;
-      let routeResult: SquidRouteResult | undefined;
-
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        routeResult = await getSquidRoute({
-          fromAddress: portfolio.address,
-          fromAmount: quotedFromAmount.toString(),
-          fromChain: targetNetwork.squidChainId,
-          fromToken: sourceToken.address,
-          slippage: 0.3,
-          toAddress: portfolio.address,
-          toChain: targetNetwork.squidChainId,
-          toToken: copmToken.address,
-        });
-        setSwapFeeUsd(getRouteFeeUsd(routeResult));
-
-        const quotedCopm = getRouteToAmount(routeResult);
-        if (!quotedCopm || quotedCopm >= requestedCopm) break;
-
-        const nextFromAmount =
-          (quotedFromAmount * requestedCopm * 1005n) / (quotedCopm * 1000n) +
-          1n;
-
-        if (sourceToken.balance && nextFromAmount > sourceToken.balance) {
-          throw new Error("Saldo insuficiente para recibir el COPm solicitado.");
-        }
-
-        quotedFromAmount = nextFromAmount;
-      }
-
-      const quotedCopm = routeResult ? getRouteToAmount(routeResult) : undefined;
-      if (quotedCopm && quotedCopm < requestedCopm) {
-        throw new Error(
-          `La cotizacion actual solo entrega ${formatCopmUnits(
-            quotedCopm,
-            copmToken.decimals
-          )} COPm. Intenta con un monto menor.`
-        );
-      }
-
-      if (!routeResult) throw new Error("Squid route unavailable");
-      const transactionRequest = routeResult.route?.transactionRequest;
-
-      if (
-        !transactionRequest?.target ||
-        !isAddress(transactionRequest.target) ||
-        !transactionRequest.data
-      ) {
-        throw new Error("Invalid Squid transaction");
-      }
-
-      setSwapStatus("buying");
-      setSwapProgress("confirming");
       const initialCopmBalance = publicClient
         ? ((await publicClient.readContract({
             address: copmToken.address,
@@ -703,15 +713,64 @@ export default function Home() {
             args: [portfolio.address],
           })) as bigint)
         : undefined;
-      const hash = await sendTransactionAsync({
-        to: transactionRequest.target,
-        data: transactionRequest.data,
-        value: BigInt(transactionRequest.value ?? "0"),
-      });
+      let lastHash: string | undefined;
+      let quotedCopmTotal = 0n;
+      let totalFeeUsd = 0;
 
-      setSwapProgress("processing");
-      await publicClient?.waitForTransactionReceipt({ hash });
-      await waitForSquidStatus(routeResult, hash, targetNetwork.squidChainId);
+      for (const [index, leg] of swapPlan.entries()) {
+        const legRequestedCopm = parseCopmUnits(
+          String(Math.floor(leg.usdAmount * copPerUsd)),
+          copmToken.decimals
+        );
+        const routeResult = await getSquidRoute({
+          fromAddress: portfolio.address,
+          fromAmount: leg.fromAmount.toString(),
+          fromChain: targetNetwork.squidChainId,
+          fromToken: leg.token.address!,
+          slippage: 0.3,
+          toAddress: portfolio.address,
+          toChain: targetNetwork.squidChainId,
+          toToken: copmToken.address,
+        });
+        totalFeeUsd += getRouteFeeUsd(routeResult);
+        setSwapFeeUsd(totalFeeUsd);
+
+        const quotedCopm = getRouteToAmount(routeResult);
+        if (quotedCopm && quotedCopm < legRequestedCopm) {
+          throw new Error(
+            `La cotizacion de ${leg.token.symbol} entrega menos COPm del esperado. Intenta con un monto menor.`
+          );
+        }
+        quotedCopmTotal += quotedCopm ?? legRequestedCopm;
+
+        const transactionRequest = routeResult.route?.transactionRequest;
+        if (
+          !transactionRequest?.target ||
+          !isAddress(transactionRequest.target) ||
+          !transactionRequest.data
+        ) {
+          throw new Error("Invalid Squid transaction");
+        }
+
+        setSwapStatus("buying");
+        setSwapProgress("confirming");
+        const hash = await sendTransactionAsync({
+          to: transactionRequest.target,
+          data: transactionRequest.data,
+          value: BigInt(transactionRequest.value ?? "0"),
+        });
+        lastHash = hash;
+
+        setSwapProgress("processing");
+        await publicClient?.waitForTransactionReceipt({ hash });
+        await waitForSquidStatus(routeResult, hash, targetNetwork.squidChainId);
+
+        if (index < swapPlan.length - 1) setSwapProgress("quoting");
+      }
+
+      if (quotedCopmTotal < requestedCopm) {
+        throw new Error("La cotizacion actual entrega menos COPm del solicitado.");
+      }
       const finalCopmBalance = publicClient
         ? ((await publicClient.readContract({
             address: copmToken.address,
@@ -725,7 +784,7 @@ export default function Home() {
         finalCopmBalance !== undefined &&
         finalCopmBalance >= initialCopmBalance
           ? finalCopmBalance - initialCopmBalance
-          : quotedCopm;
+          : quotedCopmTotal;
 
       setSwapResult({
         copmBalance:
@@ -736,8 +795,8 @@ export default function Home() {
           receivedCopm !== undefined
             ? formatCopmUnits(receivedCopm, copmToken.decimals)
             : formatCopmUnits(requestedCopm, copmToken.decimals),
-        txHash: hash,
-        txUrl: `${targetNetwork.blockExplorerUrl}/tx/${hash}`,
+        txHash: lastHash ?? "",
+        txUrl: `${targetNetwork.blockExplorerUrl}/tx/${lastHash}`,
       });
       setSwapStatus("complete");
       setSwapProgress("idle");
@@ -1273,10 +1332,13 @@ function BuyCopmScreen({
   const hasInsufficientFunds =
     !hasNoFunds && totalUsd < requestedUsd;
   const selectedToken = getSwapSourceToken(tokens, tokenPrices, requestedUsd);
+  const approvedPlan = getApprovedSwapPlan(tokens, tokenPrices, requestedUsd);
+  const hasApprovedPlan = getSwapPlanUsd(approvedPlan) + 0.01 >= requestedUsd;
   const approvalToken =
-    selectedToken ?? getSwapCandidateToken(tokens, tokenPrices, requestedUsd);
+    selectedToken ??
+    getSwapApprovalCandidate(tokens, tokenPrices, requestedUsd)?.token;
   const needsApprovedToken =
-    isLive && !hasNoFunds && !hasInsufficientFunds && !selectedToken;
+    isLive && !hasNoFunds && !hasInsufficientFunds && !hasApprovedPlan;
   const isPreparingApproval =
     needsApprovedToken &&
     (approvalToken ? !approvalTargets[approvalToken.symbol] : false);
@@ -1358,6 +1420,12 @@ function BuyCopmScreen({
             Activa permiso suficiente para comprar este monto de COPm.
           </div>
         )}
+        {approvedPlan.length > 1 && !needsApprovedToken && (
+          <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
+            Esta compra usara {getSwapPlanTokenSymbols(approvedPlan)} y requiere{" "}
+            {approvedPlan.length} confirmaciones.
+          </div>
+        )}
         {swapError && (
           <div className="mt-3 rounded-[8px] bg-[#FDECEC] px-3 py-2 text-sm font-medium leading-5 text-[#8A1F1F]">
             {swapError} Intenta de nuevo.
@@ -1405,7 +1473,10 @@ function BuyCopmScreen({
               Usaremos
             </p>
             <div className="space-y-2">
-              {(selectedToken ? [selectedToken] : tokens.slice(0, 3)).map((token) => (
+              {(approvedPlan.length
+                ? approvedPlan.map((leg) => leg.token)
+                : tokens.slice(0, 3)
+              ).map((token) => (
                 <div
                   key={token.symbol}
                   className="flex items-center justify-between text-sm"
