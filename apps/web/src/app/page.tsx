@@ -445,6 +445,7 @@ export default function Home() {
       (token) =>
         tokenHasBalance(token) &&
         token.address &&
+        token.requiresApproval &&
         !approvalTargets[token.symbol] &&
         getApprovalCap(token, tokenPrices)
     );

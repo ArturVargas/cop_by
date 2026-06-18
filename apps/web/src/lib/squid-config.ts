@@ -54,20 +54,35 @@ export type SquidStatusParams = {
   transactionId: string;
 };
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function getSquidRoute(params: SquidRouteParams) {
   const integratorId = getSquidIntegratorId();
   if (!integratorId) throw new Error("Missing Squid integrator id");
 
-  const response = await fetch(`${SQUID_API_BASE_URL}/v2/route`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-integrator-id": integratorId,
-    },
-    body: JSON.stringify(params),
-  });
+  let response: Response | undefined;
 
-  if (!response.ok) throw new Error("Squid route unavailable");
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    response = await fetch(`${SQUID_API_BASE_URL}/v2/route`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-integrator-id": integratorId,
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (response.status !== 429) break;
+
+    const payload = (await response.json().catch(() => undefined)) as
+      | { retryAfter?: number }
+      | undefined;
+    await sleep((payload?.retryAfter ?? 1) * 1000);
+  }
+
+  if (!response?.ok) throw new Error("Squid route unavailable");
 
   const payload = (await response.json()) as { route?: SquidRoute };
   const target = payload.route?.transactionRequest?.target;
