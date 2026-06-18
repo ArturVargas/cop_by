@@ -837,6 +837,7 @@ export default function Home() {
       if (receivedCopm !== undefined) {
         void updateSwapIntent(intentId, {
           copmReceived: formatUnits(receivedCopm, copmToken.decimals),
+          feeUsd: totalFeeUsd.toFixed(6),
           squidRequestIds,
           status: "confirmed",
           swapTxHashes,

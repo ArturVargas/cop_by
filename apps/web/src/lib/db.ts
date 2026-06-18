@@ -18,10 +18,15 @@ export async function ensureSwapTable() {
       squid_request_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
       swap_tx_hashes JSONB NOT NULL DEFAULT '[]'::jsonb,
       copm_received TEXT,
+      fee_usd TEXT,
       onchain_log_tx_hash TEXT,
       error TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `;
+  await getSql()`
+    ALTER TABLE swap_intents
+    ADD COLUMN IF NOT EXISTS fee_usd TEXT
   `;
 }

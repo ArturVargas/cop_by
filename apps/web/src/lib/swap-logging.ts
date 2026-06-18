@@ -22,6 +22,7 @@ export async function updateSwapIntent(
   input: {
     copmReceived?: string;
     error?: string;
+    feeUsd?: string;
     squidRequestIds?: string[];
     status: string;
     swapTxHashes?: string[];
