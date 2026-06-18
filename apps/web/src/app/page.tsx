@@ -741,31 +741,46 @@ export default function Home() {
       }> = [];
 
       for (const [index, leg] of swapPlan.entries()) {
-        const legRequestedCopm = parseCopmUnits(
-          String(Math.floor(leg.usdAmount * copPerUsd)),
-          copmToken.decimals
-        );
-        const routeResult = await getSquidRoute({
-          fromAddress: portfolio.address,
-          fromAmount: leg.fromAmount.toString(),
-          fromChain: targetNetwork.squidChainId,
-          fromToken: leg.token.address!,
-          slippage: 0.3,
-          toAddress: portfolio.address,
-          toChain: targetNetwork.squidChainId,
-          toToken: copmToken.address,
-        });
+        let routeResult: SquidRouteResult | undefined;
+        let quotedCopm: bigint | undefined;
+        let legFromAmount = leg.fromAmount;
+
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          routeResult = await getSquidRoute({
+            fromAddress: portfolio.address,
+            fromAmount: legFromAmount.toString(),
+            fromChain: targetNetwork.squidChainId,
+            fromToken: leg.token.address!,
+            slippage: 0.3,
+            toAddress: portfolio.address,
+            toChain: targetNetwork.squidChainId,
+            toToken: copmToken.address,
+          });
+          quotedCopm = getRouteToAmount(routeResult);
+
+          if (swapPlan.length > 1 || !quotedCopm || quotedCopm >= requestedCopm) {
+            break;
+          }
+
+          const nextFromAmount =
+            (legFromAmount * requestedCopm * 1005n) / (quotedCopm * 1000n) + 1n;
+
+          if (
+            (leg.token.balance && nextFromAmount > leg.token.balance) ||
+            (leg.token.allowance && nextFromAmount > leg.token.allowance)
+          ) {
+            break;
+          }
+
+          legFromAmount = nextFromAmount;
+        }
+
+        if (!routeResult) throw new Error("Squid route unavailable");
         if (routeResult.requestId) squidRequestIds.push(routeResult.requestId);
         totalFeeUsd += getRouteFeeUsd(routeResult);
         setSwapFeeUsd(totalFeeUsd);
 
-        const quotedCopm = getRouteToAmount(routeResult);
-        if (quotedCopm && quotedCopm < legRequestedCopm) {
-          throw new Error(
-            `La cotizacion de ${leg.token.symbol} entrega menos COPm del esperado. Intenta con un monto menor.`
-          );
-        }
-        quotedCopmTotal += quotedCopm ?? legRequestedCopm;
+        quotedCopmTotal += quotedCopm ?? 0n;
 
         const transactionRequest = routeResult.route?.transactionRequest;
         if (
@@ -785,9 +800,12 @@ export default function Home() {
         });
         lastHash = hash;
         swapTxHashes.push(hash);
+        const tokenPrice = getTokenPrice(leg.token, tokenPrices) ?? 0;
         tokensSpent.push({
-          amount: formatUnits(leg.fromAmount, leg.token.decimals ?? 18),
-          amountUsd: leg.usdAmount,
+          amount: formatUnits(legFromAmount, leg.token.decimals ?? 18),
+          amountUsd:
+            Number(formatUnits(legFromAmount, leg.token.decimals ?? 18)) *
+            tokenPrice,
           symbol: leg.token.symbol,
         });
         void updateSwapIntent(intentId, {
@@ -805,7 +823,12 @@ export default function Home() {
       }
 
       if (quotedCopmTotal < requestedCopm) {
-        throw new Error("La cotizacion actual entrega menos COPm del solicitado.");
+        throw new Error(
+          `La cotizacion actual entrega ${formatCopmUnits(
+            quotedCopmTotal,
+            copmToken.decimals
+          )} COPm de ${copAmount} COPm solicitados.`
+        );
       }
       const finalCopmBalance = publicClient
         ? ((await publicClient.readContract({
