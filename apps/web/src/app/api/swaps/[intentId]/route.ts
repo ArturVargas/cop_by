@@ -18,14 +18,19 @@ export async function PATCH(
 ) {
   try {
     const body = (await request.json()) as UpdateSwapBody;
+    const tokensSpent = body.tokensSpent === undefined ? null : JSON.stringify(body.tokensSpent);
+    const squidRequestIds =
+      body.squidRequestIds === undefined ? null : JSON.stringify(body.squidRequestIds);
+    const swapTxHashes =
+      body.swapTxHashes === undefined ? null : JSON.stringify(body.swapTxHashes);
     await ensureSwapTable();
 
     const [swap] = await getSql()`
       UPDATE swap_intents SET
         status = COALESCE(${body.status ?? null}, status),
-        tokens_spent = COALESCE(${JSON.stringify(body.tokensSpent ?? null)}::jsonb, tokens_spent),
-        squid_request_ids = COALESCE(${JSON.stringify(body.squidRequestIds ?? null)}::jsonb, squid_request_ids),
-        swap_tx_hashes = COALESCE(${JSON.stringify(body.swapTxHashes ?? null)}::jsonb, swap_tx_hashes),
+        tokens_spent = COALESCE(${tokensSpent}::jsonb, tokens_spent),
+        squid_request_ids = COALESCE(${squidRequestIds}::jsonb, squid_request_ids),
+        swap_tx_hashes = COALESCE(${swapTxHashes}::jsonb, swap_tx_hashes),
         copm_received = COALESCE(${body.copmReceived ?? null}, copm_received),
         onchain_log_tx_hash = COALESCE(${body.onchainLogTxHash ?? null}, onchain_log_tx_hash),
         error = COALESCE(${body.error ?? null}, error),

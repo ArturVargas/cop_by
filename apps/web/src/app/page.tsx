@@ -38,6 +38,11 @@ import {
   getSquidStatus,
   type SquidRouteResult,
 } from "@/lib/squid-config";
+import {
+  createSwapIntent,
+  logSwapOnchain,
+  updateSwapIntent,
+} from "@/lib/swap-logging";
 
 const steps = ["Ordenar", "Activar", "Comprar"];
 const FALLBACK_COP_PER_USD = 3400;
@@ -67,6 +72,10 @@ function getDefaultApprovalTargets(targetNetwork: ReturnType<typeof getTargetNet
       .filter((token) => token.requiresApproval)
       .map((token) => [token.symbol, SQUID_CELO_APPROVAL_TARGET])
   ) as Partial<Record<string, Address>>;
+}
+
+function createIntentId() {
+  return crypto.randomUUID();
 }
 
 function formatAddressPreview(address: string) {
@@ -698,11 +707,18 @@ export default function Home() {
       const usdAmount = getPurchaseUsdAmount(copAmount, copPerUsd);
       const swapPlan = getApprovedSwapPlan(tokens, tokenPrices, usdAmount);
       const requestedCopm = parseCopmUnits(copAmount, copmToken.decimals);
+      const intentId = createIntentId();
 
       if (getSwapPlanUsd(swapPlan) + 0.01 < usdAmount) {
         throw new Error("No approved source token");
       }
 
+      await createSwapIntent({
+        chainId: targetNetwork.chainId,
+        intentId,
+        requestedCopm: copAmount,
+        userAddress: portfolio.address,
+      });
       setSwapStatus("quoting");
       setSwapProgress("quoting");
       const initialCopmBalance = publicClient
@@ -716,6 +732,13 @@ export default function Home() {
       let lastHash: string | undefined;
       let quotedCopmTotal = 0n;
       let totalFeeUsd = 0;
+      const squidRequestIds: string[] = [];
+      const swapTxHashes: string[] = [];
+      const tokensSpent: Array<{
+        amount: string;
+        amountUsd: number;
+        symbol: string;
+      }> = [];
 
       for (const [index, leg] of swapPlan.entries()) {
         const legRequestedCopm = parseCopmUnits(
@@ -732,6 +755,7 @@ export default function Home() {
           toChain: targetNetwork.squidChainId,
           toToken: copmToken.address,
         });
+        if (routeResult.requestId) squidRequestIds.push(routeResult.requestId);
         totalFeeUsd += getRouteFeeUsd(routeResult);
         setSwapFeeUsd(totalFeeUsd);
 
@@ -760,6 +784,18 @@ export default function Home() {
           value: BigInt(transactionRequest.value ?? "0"),
         });
         lastHash = hash;
+        swapTxHashes.push(hash);
+        tokensSpent.push({
+          amount: formatUnits(leg.fromAmount, leg.token.decimals ?? 18),
+          amountUsd: leg.usdAmount,
+          symbol: leg.token.symbol,
+        });
+        void updateSwapIntent(intentId, {
+          squidRequestIds,
+          status: "submitted",
+          swapTxHashes,
+          tokensSpent,
+        });
 
         setSwapProgress("processing");
         await publicClient?.waitForTransactionReceipt({ hash });
@@ -798,6 +834,15 @@ export default function Home() {
         txHash: lastHash ?? "",
         txUrl: `${targetNetwork.blockExplorerUrl}/tx/${lastHash}`,
       });
+      if (receivedCopm !== undefined) {
+        void updateSwapIntent(intentId, {
+          copmReceived: formatUnits(receivedCopm, copmToken.decimals),
+          squidRequestIds,
+          status: "confirmed",
+          swapTxHashes,
+          tokensSpent,
+        }).then(() => logSwapOnchain(intentId));
+      }
       setSwapStatus("complete");
       setSwapProgress("idle");
     } catch (error) {
