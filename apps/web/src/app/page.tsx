@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import {
@@ -76,6 +77,42 @@ function getDefaultApprovalTargets(targetNetwork: ReturnType<typeof getTargetNet
 
 function createIntentId() {
   return crypto.randomUUID();
+}
+
+function getFriendlyErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const lowerMessage = message.toLowerCase();
+
+  if (
+    lowerMessage.includes("user rejected") ||
+    lowerMessage.includes("user denied") ||
+    lowerMessage.includes("rejected the request") ||
+    lowerMessage.includes("denied transaction")
+  ) {
+    return "Cancelaste la confirmacion en tu wallet.";
+  }
+
+  if (
+    lowerMessage.includes("too many quote requests") ||
+    lowerMessage.includes("rate limit") ||
+    lowerMessage.includes("429")
+  ) {
+    return "Estamos recibiendo muchas cotizaciones. Espera unos segundos e intenta de nuevo.";
+  }
+
+  if (lowerMessage.includes("squid route unavailable")) {
+    return "No pudimos obtener una cotizacion de Squid. Intenta de nuevo.";
+  }
+
+  if (lowerMessage.includes("insufficient")) {
+    return "Saldo o permiso insuficiente para completar esta compra.";
+  }
+
+  if (message.length > 180 || lowerMessage.includes("request arguments")) {
+    return "No pudimos completar la compra. Revisa la confirmacion en tu wallet e intenta de nuevo.";
+  }
+
+  return message || "No pudimos completar la compra. Intenta de nuevo.";
 }
 
 function formatAddressPreview(address: string) {
@@ -684,11 +721,7 @@ export default function Home() {
         )
       );
     } catch (error) {
-      setSwapError(
-        error instanceof Error
-          ? error.message
-          : "No pudimos activar el token para esta compra."
-      );
+      setSwapError(getFriendlyErrorMessage(error));
     } finally {
       setActivating(null);
     }
@@ -825,10 +858,10 @@ export default function Home() {
 
       if (quotedCopmTotal < requestedCopm) {
         throw new Error(
-          `La cotizacion actual entrega ${formatCopmUnits(
+          `No pudimos completar el monto exacto. La mejor cotizacion disponible entrega ${formatCopmUnits(
             quotedCopmTotal,
             copmToken.decimals
-          )} COPm de ${copAmount} COPm solicitados.`
+          )} COPm.`
         );
       }
       const finalCopmBalance = publicClient
@@ -873,11 +906,7 @@ export default function Home() {
     } catch (error) {
       setSwapStatus("error");
       setSwapProgress("idle");
-      setSwapError(
-        error instanceof Error
-          ? error.message
-          : "No pudimos completar la compra. Revisa permisos, saldo y red."
-      );
+      setSwapError(getFriendlyErrorMessage(error));
     }
   };
 
@@ -948,6 +977,14 @@ export default function Home() {
             onDetailsToggle={() => setDetailsOpen((open) => !open)}
           />
         )}
+        <footer className="mt-auto py-5 text-center">
+          <Link
+            href="/analytics"
+            className="text-xs font-semibold text-[#66736B] underline-offset-4 hover:text-[#0E7C4F] hover:underline"
+          >
+            Ver stats
+          </Link>
+        </footer>
         {swapResult && (
           <SwapSuccessModal
             result={swapResult}
@@ -1498,7 +1535,7 @@ function BuyCopmScreen({
         )}
         {swapError && (
           <div className="mt-3 rounded-[8px] bg-[#FDECEC] px-3 py-2 text-sm font-medium leading-5 text-[#8A1F1F]">
-            {swapError} Intenta de nuevo.
+            {swapError}
           </div>
         )}
 
