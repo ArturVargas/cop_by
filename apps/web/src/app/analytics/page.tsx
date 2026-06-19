@@ -238,10 +238,10 @@ export default async function AnalyticsPage() {
               sub={`${number(multiToken)} multi-token swaps`}
             />
             <StatCard
-              label="Logged on-chain"
+              label="On-chain logs"
               tone="bg-[#FFEAC8]"
               value={number(logged.length)}
-              sub="bitacora contract"
+              sub="confirmed swaps recorded"
             />
             <StatCard
               label="WAU"
@@ -330,12 +330,12 @@ export default async function AnalyticsPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.slice(0, 10).map((row) => (
+                {completed.slice(0, 10).map((row) => (
                   <tr key={row.intent_id} className="border-b border-[#F0F0EC]">
                     <td className="py-4 font-mono text-sm">
                       {shortAddress(row.user_address)}
                     </td>
-                    <td className="py-4">{row.status}</td>
+                    <td className="py-4">confirmed</td>
                     <td className="py-4 text-right">{row.requested_copm}</td>
                     <td className="py-4 text-right">
                       {row.copm_received ? number(Number(row.copm_received), 2) : "-"}
