@@ -56,6 +56,22 @@ function getTokensSpent(row: SwapRow) {
   return asArray(row.tokens_spent) as TokenSpend[];
 }
 
+function isCompleted(row: SwapRow) {
+  return ["confirmed", "logged"].includes(row.status);
+}
+
+function getVolumeUsd(rows: SwapRow[]) {
+  return rows.reduce(
+    (sum, row) =>
+      sum +
+      getTokensSpent(row).reduce(
+        (tokenSum, token) => tokenSum + Number(token.amountUsd ?? 0),
+        0
+      ),
+    0
+  );
+}
+
 async function getRows() {
   await ensureSwapTable();
   return (await getSql()`
@@ -97,44 +113,34 @@ export default async function AnalyticsPage() {
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
   const total = rows.length;
-  const confirmed = rows.filter((row) =>
-    ["confirmed", "logged"].includes(row.status)
-  );
+  const completed = rows.filter(isCompleted);
   const logged = rows.filter((row) => row.status === "logged");
   const failed = rows.filter((row) => row.status === "failed" || row.error);
-  const todayRows = rows.filter((row) => new Date(row.created_at) >= today);
+  const todayRows = completed.filter((row) => new Date(row.created_at) >= today);
   const wau = new Set(
-    rows
+    completed
       .filter((row) => new Date(row.created_at) >= sevenDaysAgo)
       .map((row) => row.user_address)
   ).size;
   const mau = new Set(
-    rows
+    completed
       .filter((row) => new Date(row.created_at) >= thirtyDaysAgo)
       .map((row) => row.user_address)
   ).size;
-  const users = new Set(rows.map((row) => row.user_address)).size;
-  const volumeUsd = rows.reduce(
-    (sum, row) =>
-      sum +
-      getTokensSpent(row).reduce(
-        (tokenSum, token) => tokenSum + Number(token.amountUsd ?? 0),
-        0
-      ),
-    0
-  );
-  const feeUsd = rows.reduce((sum, row) => sum + Number(row.fee_usd ?? 0), 0);
-  const copmReceived = confirmed.reduce(
+  const users = new Set(completed.map((row) => row.user_address)).size;
+  const volumeUsd = getVolumeUsd(completed);
+  const feeUsd = completed.reduce((sum, row) => sum + Number(row.fee_usd ?? 0), 0);
+  const copmReceived = completed.reduce(
     (sum, row) => sum + Number(row.copm_received ?? 0),
     0
   );
-  const multiToken = rows.filter((row) => getTokensSpent(row).length > 1).length;
-  const txCount = rows.reduce(
+  const multiToken = completed.filter((row) => getTokensSpent(row).length > 1).length;
+  const txCount = completed.reduce(
     (sum, row) => sum + asArray(row.swap_tx_hashes).length,
     0
   );
   const tokenTable = Object.entries(
-    rows.reduce<Record<string, { count: number; usd: number }>>((acc, row) => {
+    completed.reduce<Record<string, { count: number; usd: number }>>((acc, row) => {
       getTokensSpent(row).forEach((token) => {
         if (!token.symbol) return;
         acc[token.symbol] ??= { count: 0, usd: 0 };
@@ -179,15 +185,7 @@ export default async function AnalyticsPage() {
               label="Volume today"
               tone="bg-[#EEF0FA]"
               value={money(
-                todayRows.reduce(
-                  (sum, row) =>
-                    sum +
-                    getTokensSpent(row).reduce(
-                      (tokenSum, token) => tokenSum + Number(token.amountUsd ?? 0),
-                      0
-                    ),
-                  0
-                )
+                getVolumeUsd(todayRows)
               )}
             />
             <StatCard
@@ -228,10 +226,10 @@ export default async function AnalyticsPage() {
           <h2 className="text-3xl font-black uppercase">On-chain</h2>
           <div className="mt-8 grid gap-4 md:grid-cols-3">
             <StatCard
-              label="Total intents"
+              label="Completed swaps"
               tone="bg-[#E1F1EA]"
-              value={number(total)}
-              sub={`${number(users)} active addresses`}
+              value={number(completed.length)}
+              sub={`${number(total)} intents · ${number(users)} active addresses`}
             />
             <StatCard
               label="Swap txs"
