@@ -1,8 +1,21 @@
 # cop_by
 
-buy cop with any erc20
+Buy COPm in MiniPay with the tokens already in your wallet.
 
-A modern Celo blockchain application built with Next.js, TypeScript, and Turborepo.
+## One Slide Pitch
+
+**COP By turns fragmented MiniPay balances into Colombian digital pesos in a few taps.**
+
+MiniPay users often hold small amounts across USDC, USDT, ETH, or WBTC, but converting those balances into COPm should feel like one simple purchase, not a crypto workflow. COP By detects the compatible tokens in the user's wallet, lets them choose the order in which balances should be spent, prepares token permissions, quotes swaps through Squid Router, and delivers COPm directly to the same wallet.
+
+- **User problem**: people want usable COPm, not manual token routing.
+- **Solution**: a MiniPay-first COPm purchase flow with ordered token spending.
+- **First market**: Colombian users who need local digital pesos for daily payments.
+- **MVP flow**: order tokens, approve once per token, enter COPm amount, buy.
+- **Data layer**: swaps are stored in Neon and logged onchain for attribution and analytics.
+- **Revenue path**: protocol fee through Squid integrator fee configuration.
+
+A modern Celo blockchain application built with Next.js, TypeScript, Squid Router, Neon, and Turborepo.
 
 ## Getting Started
 

@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type {
+  PointerEvent as ReactPointerEvent,
+  TouchEvent as ReactTouchEvent,
+} from "react";
 import {
   erc20Abi,
   formatUnits,
@@ -47,6 +50,7 @@ import {
 
 const steps = ["Ordenar", "Activar", "Comprar"];
 const FALLBACK_COP_PER_USD = 3400;
+const USD_PLAN_TOLERANCE = 0.01;
 const TOKEN_ORDER_STORAGE_KEY = "cop_by_token_order";
 const SQUID_CELO_APPROVAL_TARGET =
   "0xce16F69375520ab01377ce7B88f5BA8C48F8D666" as Address;
@@ -98,6 +102,10 @@ function getFriendlyErrorMessage(error: unknown) {
     lowerMessage.includes("429")
   ) {
     return "Estamos recibiendo muchas cotizaciones. Espera unos segundos e intenta de nuevo.";
+  }
+
+  if (lowerMessage.includes("low liquidity")) {
+    return "No encontramos suficiente liquidez para comprar COPm con este token. Intenta con un monto menor o con otro token.";
   }
 
   if (lowerMessage.includes("squid route unavailable")) {
@@ -295,7 +303,7 @@ function getApprovedSwapPlan(
 
     plan.push({ token, usdAmount: spendUsd, fromAmount });
     remainingUsd -= spendUsd;
-    if (remainingUsd <= 0.01) return plan;
+    if (remainingUsd <= USD_PLAN_TOLERANCE) return plan;
   }
 
   return plan;
@@ -321,7 +329,7 @@ function getSwapApprovalCandidate(
     }
 
     remainingUsd -= Math.min(getTokenSpendableUsd(token, prices), neededUsd);
-    if (remainingUsd <= 0.01) return;
+    if (remainingUsd <= USD_PLAN_TOLERANCE) return;
   }
 }
 
@@ -1065,6 +1073,15 @@ function TokenOrderScreen({
     setDraggingSymbol(symbol);
   };
 
+  const startTouchDrag = (
+    event: ReactTouchEvent<HTMLButtonElement>,
+    symbol: string
+  ) => {
+    event.preventDefault();
+    draggingSymbolRef.current = symbol;
+    setDraggingSymbol(symbol);
+  };
+
   const endDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -1073,17 +1090,33 @@ function TokenOrderScreen({
     setDraggingSymbol(null);
   };
 
+  const endTouchDrag = () => {
+    draggingSymbolRef.current = null;
+    setDraggingSymbol(null);
+  };
+
   useEffect(() => {
     if (!draggingSymbol) return;
 
-    const moveDrag = (event: PointerEvent) => {
+    const moveDragTo = (clientY: number) => {
       const symbol = draggingSymbolRef.current;
       if (!symbol) return;
 
       const fromIndex = tokens.findIndex((token) => token.symbol === symbol);
-      const toIndex = getTargetIndex(event.clientY);
+      const toIndex = getTargetIndex(clientY);
       if (toIndex === -1) return;
       onReorder(fromIndex, toIndex);
+    };
+
+    const movePointerDrag = (event: PointerEvent) => {
+      moveDragTo(event.clientY);
+    };
+
+    const moveTouchDrag = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (!touch) return;
+      event.preventDefault();
+      moveDragTo(touch.clientY);
     };
 
     const cancelDrag = () => {
@@ -1091,14 +1124,20 @@ function TokenOrderScreen({
       setDraggingSymbol(null);
     };
 
-    window.addEventListener("pointermove", moveDrag);
+    window.addEventListener("pointermove", movePointerDrag);
     window.addEventListener("pointerup", cancelDrag);
     window.addEventListener("pointercancel", cancelDrag);
+    window.addEventListener("touchmove", moveTouchDrag, { passive: false });
+    window.addEventListener("touchend", cancelDrag);
+    window.addEventListener("touchcancel", cancelDrag);
 
     return () => {
-      window.removeEventListener("pointermove", moveDrag);
+      window.removeEventListener("pointermove", movePointerDrag);
       window.removeEventListener("pointerup", cancelDrag);
       window.removeEventListener("pointercancel", cancelDrag);
+      window.removeEventListener("touchmove", moveTouchDrag);
+      window.removeEventListener("touchend", cancelDrag);
+      window.removeEventListener("touchcancel", cancelDrag);
     };
   }, [draggingSymbol, onReorder, tokens]);
 
@@ -1154,6 +1193,9 @@ function TokenOrderScreen({
                   onPointerDown={(event) => startDrag(event, token.symbol)}
                   onPointerUp={endDrag}
                   onPointerCancel={endDrag}
+                  onTouchStart={(event) => startTouchDrag(event, token.symbol)}
+                  onTouchEnd={endTouchDrag}
+                  onTouchCancel={endTouchDrag}
                 >
                   <GripVertical className="h-5 w-5 shrink-0" />
                 </button>
@@ -1436,11 +1478,17 @@ function BuyCopmScreen({
 }) {
   const hasNoFunds = isLive && !hasCompatibleTokens;
   const requestedUsd = getPurchaseUsdAmount(copAmount, copPerUsd);
+  const missingUsd = Math.max(requestedUsd - totalUsd, 0);
   const hasInsufficientFunds =
-    !hasNoFunds && totalUsd < requestedUsd;
+    !hasNoFunds && missingUsd > USD_PLAN_TOLERANCE;
   const selectedToken = getSwapSourceToken(tokens, tokenPrices, requestedUsd);
   const approvedPlan = getApprovedSwapPlan(tokens, tokenPrices, requestedUsd);
-  const hasApprovedPlan = getSwapPlanUsd(approvedPlan) + 0.01 >= requestedUsd;
+  const approvedPlanUsd = getSwapPlanUsd(approvedPlan);
+  const hasApprovedPlan =
+    approvedPlanUsd + USD_PLAN_TOLERANCE >= requestedUsd;
+  const detailPlan = approvedPlan.length
+    ? approvedPlan
+    : getApprovedSwapPlan(tokens, tokenPrices, Math.min(requestedUsd, totalUsd));
   const approvalToken =
     selectedToken ??
     getSwapApprovalCandidate(tokens, tokenPrices, requestedUsd)?.token;
@@ -1519,7 +1567,7 @@ function BuyCopmScreen({
           <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
             {hasNoFunds
               ? "No encontramos tokens compatibles para comprar COPm."
-              : "Saldo insuficiente para comprar esta cantidad de COPm."}
+              : `Te faltan ${formatUsd(missingUsd)} aprox. para comprar esta cantidad de COPm.`}
           </div>
         )}
         {needsApprovedToken && (
@@ -1527,9 +1575,9 @@ function BuyCopmScreen({
             Activa permiso suficiente para comprar este monto de COPm.
           </div>
         )}
-        {approvedPlan.length > 1 && !needsApprovedToken && (
+        {approvedPlan.length > 1 && canBuy && (
           <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
-            Esta compra usara {getSwapPlanTokenSymbols(approvedPlan)} y requiere{" "}
+            Esta compra usará {getSwapPlanTokenSymbols(approvedPlan)} y requiere{" "}
             {approvedPlan.length} confirmaciones.
           </div>
         )}
@@ -1539,9 +1587,17 @@ function BuyCopmScreen({
           </div>
         )}
 
-        <div className="mt-3 rounded-[8px] bg-[#E6F4EE] p-4">
+        <div
+          className={`mt-3 rounded-[8px] p-4 ${
+            canBuy ? "bg-[#E6F4EE]" : "bg-[#F2F5F1]"
+          }`}
+        >
           <p className="text-sm font-medium text-[#66736B]">Recibiras</p>
-          <p className="mt-1 text-[28px] font-semibold leading-tight text-[#0E7C4F]">
+          <p
+            className={`mt-1 text-[28px] font-semibold leading-tight ${
+              canBuy ? "text-[#0E7C4F]" : "text-[#66736B]"
+            }`}
+          >
             {copAmount || "0"} COPm
           </p>
         </div>
@@ -1580,26 +1636,28 @@ function BuyCopmScreen({
               Usaremos
             </p>
             <div className="space-y-2">
-              {(approvedPlan.length
-                ? approvedPlan.map((leg) => leg.token)
-                : tokens.slice(0, 3)
-              ).map((token) => (
+              {(detailPlan.length ? detailPlan : approvedPlan).map((leg) => (
                 <div
-                  key={token.symbol}
+                  key={leg.token.symbol}
                   className="flex items-center justify-between text-sm"
                 >
                   <span className="flex items-center gap-2">
                     <span
                       className="h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: token.color }}
+                      style={{ backgroundColor: leg.token.color }}
                     />
-                    {token.symbol}
+                    {leg.token.symbol}
                   </span>
                   <span className="font-medium">
-                    {formatUsd(token.balanceUsd)}
+                    {formatUsd(leg.usdAmount)}
                   </span>
                 </div>
               ))}
+              {!detailPlan.length && !approvedPlan.length && (
+                <p className="text-sm font-medium text-[#66736B]">
+                  Activa un token para ver el detalle.
+                </p>
+              )}
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">

@@ -46,6 +46,30 @@ export type SquidRouteResult = {
   route?: SquidRoute;
 };
 
+export class SquidApiError extends Error {
+  requestId?: string;
+  status: number;
+  type?: string;
+
+  constructor({
+    message,
+    requestId,
+    status,
+    type,
+  }: {
+    message: string;
+    requestId?: string;
+    status: number;
+    type?: string;
+  }) {
+    super(message);
+    this.name = "SquidApiError";
+    this.requestId = requestId;
+    this.status = status;
+    this.type = type;
+  }
+}
+
 export type SquidStatusParams = {
   fromChainId: string;
   quoteId?: string;
@@ -82,7 +106,17 @@ export async function getSquidRoute(params: SquidRouteParams) {
     await sleep((payload?.retryAfter ?? 1) * 1000);
   }
 
-  if (!response?.ok) throw new Error("Squid route unavailable");
+  if (!response?.ok) {
+    const payload = (await response?.json().catch(() => undefined)) as
+      | { message?: string; type?: string }
+      | undefined;
+    throw new SquidApiError({
+      message: payload?.message ?? "Squid route unavailable",
+      requestId: response?.headers.get("x-request-id") ?? undefined,
+      status: response?.status ?? 0,
+      type: payload?.type,
+    });
+  }
 
   const payload = (await response.json()) as { route?: SquidRoute };
   const target = payload.route?.transactionRequest?.target;
