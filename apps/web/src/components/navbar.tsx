@@ -5,6 +5,8 @@ import { HelpCircle } from "lucide-react";
 import { ConnectButton } from "@/components/connect-button";
 import { useWalletAdapter } from "@/hooks/use-wallet-adapter";
 
+const COPM_ICON_URL = "https://app.mento.org/tokens/COPm.svg";
+
 export function Navbar() {
   const { currentNetwork, isMiniPay, targetNetwork } = useWalletAdapter();
   const networkName = currentNetwork?.name ?? targetNetwork.name;
@@ -13,9 +15,11 @@ export function Navbar() {
     <header className="sticky top-0 z-50 w-full border-b border-[#DDE4DC] bg-[#F7F8F5]/95 backdrop-blur">
       <div className="mx-auto flex h-12 w-full max-w-md items-center justify-between px-4 sm:max-w-lg md:max-w-2xl">
         <div className="flex items-center gap-2">
-          <div className="grid h-7 w-7 place-items-center rounded-[8px] bg-[#0E7C4F] text-xs font-bold text-white">
-            C
-          </div>
+          <img
+            src={COPM_ICON_URL}
+            alt="COPm"
+            className="h-7 w-7 rounded-[8px]"
+          />
           <div>
             <p className="text-sm font-semibold leading-none text-[#17211B]">
               COPm

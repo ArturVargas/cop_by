@@ -49,6 +49,7 @@ import {
 } from "@/lib/swap-logging";
 
 const steps = ["Ordenar", "Activar", "Comprar"];
+const stepColors = ["#D9CCF7", "#A98BE5", "#6D45B8"];
 const FALLBACK_COP_PER_USD = 3400;
 const MIN_PURCHASE_USD = 1;
 const MIN_SWAP_LEG_USD = 0.01;
@@ -948,9 +949,8 @@ export default function Home() {
               key={label}
               type="button"
               onClick={() => setStep(index)}
-              className={`h-2 rounded-full transition-colors ${
-                index <= step ? "bg-[#0E7C4F]" : "bg-[#DDE4DC]"
-              }`}
+              className="h-2 rounded-full transition-colors"
+              style={{ backgroundColor: index <= step ? stepColors[index] : "#DDE4DC" }}
               aria-label={`Ir a ${label}`}
             />
           ))}
@@ -1255,7 +1255,7 @@ function TokenOrderScreen({
 
       <div className="sticky bottom-0 -mx-4 mt-auto bg-[#F7F8F5]/95 px-4 py-3 backdrop-blur">
         <Button
-          className="h-12 w-full rounded-[8px] bg-[#0E7C4F] text-base font-semibold text-white hover:bg-[#075C3A]"
+          className="h-12 w-full rounded-[8px] bg-[#6D45B8] text-base font-semibold text-white hover:bg-[#56359A] disabled:bg-[#C8B9E8]"
           disabled={!canContinue}
           onClick={onContinue}
         >
@@ -1375,7 +1375,7 @@ function TokenActivationScreen({
 
       <div className="sticky bottom-0 -mx-4 mt-auto space-y-2 bg-[#F7F8F5]/95 px-4 py-3 backdrop-blur">
         <Button
-          className="h-12 w-full rounded-[8px] bg-[#0E7C4F] text-base font-semibold text-white hover:bg-[#075C3A]"
+          className="h-12 w-full rounded-[8px] bg-[#6D45B8] text-base font-semibold text-white hover:bg-[#56359A] disabled:bg-[#C8B9E8]"
           onClick={allActive ? onSkip : onActivate}
           disabled={activating !== null || (!allActive && !canApprove)}
         >
@@ -1635,7 +1635,7 @@ function BuyCopmScreen({
         </div>
 
         <Button
-          className="mt-4 h-12 w-full rounded-[8px] bg-[#0E7C4F] text-base font-semibold text-white hover:bg-[#075C3A]"
+          className="mt-4 h-12 w-full rounded-[8px] bg-[#6D45B8] text-base font-semibold text-white hover:bg-[#56359A] disabled:bg-[#C8B9E8]"
           disabled={isBusy || isApproving || (!canBuy && !canApprovePurchase)}
           onClick={needsApprovedToken ? onApprovePurchase : onBuy}
         >
@@ -1762,7 +1762,7 @@ function SwapSuccessModal({
         </div>
 
         <Button
-          className="mt-4 h-12 w-full rounded-[8px] bg-[#0E7C4F] text-base font-semibold text-white hover:bg-[#075C3A]"
+          className="mt-4 h-12 w-full rounded-[8px] bg-[#6D45B8] text-base font-semibold text-white hover:bg-[#56359A] disabled:bg-[#C8B9E8]"
           onClick={onClose}
         >
           Listo
