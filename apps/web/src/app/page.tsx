@@ -50,7 +50,9 @@ import {
 
 const steps = ["Ordenar", "Activar", "Comprar"];
 const FALLBACK_COP_PER_USD = 3400;
-const USD_PLAN_TOLERANCE = 0.01;
+const MIN_PURCHASE_USD = 1;
+const MIN_SWAP_LEG_USD = 0.01;
+const USD_PLAN_TOLERANCE = 0.001;
 const TOKEN_ORDER_STORAGE_KEY = "cop_by_token_order";
 const SQUID_CELO_APPROVAL_TARGET =
   "0xce16F69375520ab01377ce7B88f5BA8C48F8D666" as Address;
@@ -106,6 +108,10 @@ function getFriendlyErrorMessage(error: unknown) {
 
   if (lowerMessage.includes("low liquidity")) {
     return "No encontramos suficiente liquidez para comprar COPm con este token. Intenta con un monto menor o con otro token.";
+  }
+
+  if (lowerMessage.includes("minimum purchase amount")) {
+    return `La compra minima es de ${formatUsd(MIN_PURCHASE_USD)} USD aprox.`;
   }
 
   if (lowerMessage.includes("squid route unavailable")) {
@@ -299,7 +305,13 @@ function getApprovedSwapPlan(
   for (const token of tokens) {
     const spendUsd = Math.min(getTokenSpendableUsd(token, prices), remainingUsd);
     const fromAmount = getTokenAmountForUsd(token, prices, spendUsd);
-    if (spendUsd <= 0 || !fromAmount || !token.address) continue;
+    if (
+      spendUsd < MIN_SWAP_LEG_USD ||
+      !fromAmount ||
+      !token.address
+    ) {
+      continue;
+    }
 
     plan.push({ token, usdAmount: spendUsd, fromAmount });
     remainingUsd -= spendUsd;
@@ -324,11 +336,16 @@ function getSwapApprovalCandidate(
       Boolean(fromAmount) &&
       (!token.balance || !fromAmount || token.balance >= fromAmount);
 
-    if (hasEnoughBalance && getTokenSpendableUsd(token, prices) < neededUsd) {
+    if (
+      neededUsd >= MIN_SWAP_LEG_USD &&
+      hasEnoughBalance &&
+      getTokenSpendableUsd(token, prices) < neededUsd
+    ) {
       return { token, usdAmount: neededUsd, fromAmount };
     }
 
-    remainingUsd -= Math.min(getTokenSpendableUsd(token, prices), neededUsd);
+    const spendableUsd = Math.min(getTokenSpendableUsd(token, prices), neededUsd);
+    remainingUsd -= spendableUsd >= MIN_SWAP_LEG_USD ? spendableUsd : 0;
     if (remainingUsd <= USD_PLAN_TOLERANCE) return;
   }
 }
@@ -747,6 +764,10 @@ export default function Home() {
       }
 
       const usdAmount = getPurchaseUsdAmount(copAmount, copPerUsd);
+      if (usdAmount < MIN_PURCHASE_USD) {
+        throw new Error("Minimum purchase amount");
+      }
+
       const swapPlan = getApprovedSwapPlan(tokens, tokenPrices, usdAmount);
       const requestedCopm = parseCopmUnits(copAmount, copmToken.decimals);
       const intentId = createIntentId();
@@ -1478,6 +1499,7 @@ function BuyCopmScreen({
 }) {
   const hasNoFunds = isLive && !hasCompatibleTokens;
   const requestedUsd = getPurchaseUsdAmount(copAmount, copPerUsd);
+  const isBelowMinimum = requestedUsd > 0 && requestedUsd < MIN_PURCHASE_USD;
   const missingUsd = Math.max(requestedUsd - totalUsd, 0);
   const hasInsufficientFunds =
     !hasNoFunds && missingUsd > USD_PLAN_TOLERANCE;
@@ -1493,7 +1515,11 @@ function BuyCopmScreen({
     selectedToken ??
     getSwapApprovalCandidate(tokens, tokenPrices, requestedUsd)?.token;
   const needsApprovedToken =
-    isLive && !hasNoFunds && !hasInsufficientFunds && !hasApprovedPlan;
+    isLive &&
+    !hasNoFunds &&
+    !isBelowMinimum &&
+    !hasInsufficientFunds &&
+    !hasApprovedPlan;
   const isPreparingApproval =
     needsApprovedToken &&
     (approvalToken ? !approvalTargets[approvalToken.symbol] : false);
@@ -1503,6 +1529,7 @@ function BuyCopmScreen({
     requestedUsd > 0;
   const canBuy =
     !hasNoFunds &&
+    !isBelowMinimum &&
     !hasInsufficientFunds &&
     !needsApprovedToken &&
     requestedUsd > 0;
@@ -1568,6 +1595,11 @@ function BuyCopmScreen({
             {hasNoFunds
               ? "No encontramos tokens compatibles para comprar COPm."
               : `Te faltan ${formatUsd(missingUsd)} aprox. para comprar esta cantidad de COPm.`}
+          </div>
+        )}
+        {isBelowMinimum && (
+          <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
+            La compra minima es de {formatUsd(MIN_PURCHASE_USD)} USD aprox.
           </div>
         )}
         {needsApprovedToken && (
