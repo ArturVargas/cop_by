@@ -20,18 +20,13 @@ function formatCopmBalance(value?: bigint, decimals = 18) {
   }).format(amount);
 }
 
-export function ConnectButton() {
+export function CopmBalanceBadge() {
   const {
     address,
     currentNetwork,
-    hasProvider,
     isConnected,
-    isConnecting,
     isCorrectNetwork,
-    isMiniPay,
     targetNetwork,
-    connectBrowserWallet,
-    switchToTargetNetwork,
   } = useWalletAdapter();
   const activeNetwork = currentNetwork ?? targetNetwork;
   const copmToken = activeNetwork.tokens.copm;
@@ -45,6 +40,35 @@ export function ConnectButton() {
       refetchInterval: 10_000,
     },
   });
+
+  if (!isConnected || !isCorrectNetwork) return null;
+
+  return (
+    <span className="inline-flex h-9 max-w-[132px] items-center gap-1.5 truncate rounded-full border border-[#DDD2F3] bg-[#F2ECFF] px-2.5 text-[11px] font-semibold text-[#6D45B8]">
+      <img
+        src={COPM_ICON_URL}
+        alt="COPm"
+        className="h-4 w-4 shrink-0 rounded-full"
+      />
+      <span className="truncate">
+        {formatCopmBalance(copmBalance.data, copmToken.decimals)}
+      </span>
+    </span>
+  );
+}
+
+export function ConnectButton() {
+  const {
+    address,
+    hasProvider,
+    isConnected,
+    isConnecting,
+    isCorrectNetwork,
+    isMiniPay,
+    targetNetwork,
+    connectBrowserWallet,
+    switchToTargetNetwork,
+  } = useWalletAdapter();
 
   if (isMiniPay) return null;
 
@@ -72,16 +96,7 @@ export function ConnectButton() {
   if (isConnected) {
     return (
       <div className="flex items-center gap-1.5">
-        <span className="inline-flex h-9 max-w-[132px] items-center gap-1.5 truncate rounded-full border border-[#DDD2F3] bg-[#F2ECFF] px-2.5 text-[11px] font-semibold text-[#6D45B8]">
-          <img
-            src={COPM_ICON_URL}
-            alt="COPm"
-            className="h-4 w-4 shrink-0 rounded-full"
-          />
-          <span className="truncate">
-            {formatCopmBalance(copmBalance.data, copmToken.decimals)}
-          </span>
-        </span>
+        <CopmBalanceBadge />
         <span className="inline-flex h-9 items-center rounded-full border border-[#DDE4DC] bg-white px-3 text-xs font-semibold text-[#17211B]">
           {address?.slice(0, 6)}...{address?.slice(-4)}
         </span>

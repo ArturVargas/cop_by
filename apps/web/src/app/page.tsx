@@ -10,8 +10,10 @@ import {
   erc20Abi,
   formatUnits,
   isAddress,
+  parseEventLogs,
   parseUnits,
   type Address,
+  type TransactionReceipt,
 } from "viem";
 import { usePublicClient, useSendTransaction, useWriteContract } from "wagmi";
 import {
@@ -393,6 +395,34 @@ async function waitForSquidStatus(
 
     await new Promise((resolve) => setTimeout(resolve, 3000));
   }
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function getCopmReceivedFromReceipts(
+  receipts: TransactionReceipt[],
+  copmAddress: Address,
+  userAddress: Address
+) {
+  const normalizedCopmAddress = copmAddress.toLowerCase();
+  const normalizedUserAddress = userAddress.toLowerCase();
+
+  return receipts.reduce((total, receipt) => {
+    const logs = parseEventLogs({
+      abi: erc20Abi,
+      eventName: "Transfer",
+      logs: receipt.logs.filter(
+        (log) => log.address.toLowerCase() === normalizedCopmAddress
+      ),
+    });
+
+    return logs.reduce((sum, log) => {
+      const to = log.args.to?.toLowerCase();
+      return to === normalizedUserAddress ? sum + log.args.value : sum;
+    }, total);
+  }, 0n);
 }
 
 export default function Home() {
@@ -798,6 +828,7 @@ export default function Home() {
       let totalFeeUsd = 0;
       const squidRequestIds: string[] = [];
       const swapTxHashes: string[] = [];
+      const swapReceipts: TransactionReceipt[] = [];
       const tokensSpent: Array<{
         amount: string;
         amountUsd: number;
@@ -880,7 +911,8 @@ export default function Home() {
         });
 
         setSwapProgress("processing");
-        await publicClient?.waitForTransactionReceipt({ hash });
+        const receipt = await publicClient?.waitForTransactionReceipt({ hash });
+        if (receipt) swapReceipts.push(receipt);
         await waitForSquidStatus(routeResult, hash, targetNetwork.squidChainId);
 
         if (index < swapPlan.length - 1) setSwapProgress("quoting");
@@ -894,7 +926,7 @@ export default function Home() {
           )} COPm.`
         );
       }
-      const finalCopmBalance = publicClient
+      let finalCopmBalance = publicClient
         ? ((await publicClient.readContract({
             address: copmToken.address,
             abi: erc20Abi,
@@ -902,17 +934,54 @@ export default function Home() {
             args: [portfolio.address],
           })) as bigint)
         : undefined;
-      const receivedCopm =
+
+      if (
+        publicClient &&
         initialCopmBalance !== undefined &&
         finalCopmBalance !== undefined &&
-        finalCopmBalance >= initialCopmBalance
+        finalCopmBalance <= initialCopmBalance &&
+        quotedCopmTotal > 0n
+      ) {
+        for (let attempt = 0; attempt < 6; attempt += 1) {
+          await wait(2000);
+          finalCopmBalance = (await publicClient.readContract({
+            address: copmToken.address,
+            abi: erc20Abi,
+            functionName: "balanceOf",
+            args: [portfolio.address],
+          })) as bigint;
+          if (finalCopmBalance > initialCopmBalance) break;
+        }
+      }
+
+      const receiptCopm =
+        copmToken.address && portfolio.address
+          ? getCopmReceivedFromReceipts(
+              swapReceipts,
+              copmToken.address,
+              portfolio.address
+            )
+          : 0n;
+      const balanceDeltaCopm =
+        initialCopmBalance !== undefined &&
+        finalCopmBalance !== undefined &&
+        finalCopmBalance > initialCopmBalance
           ? finalCopmBalance - initialCopmBalance
-          : quotedCopmTotal;
+          : undefined;
+      const receivedCopm =
+        receiptCopm > 0n ? receiptCopm : balanceDeltaCopm ?? quotedCopmTotal;
+      const displayedCopmBalance =
+        initialCopmBalance !== undefined &&
+        finalCopmBalance !== undefined &&
+        finalCopmBalance <= initialCopmBalance &&
+        quotedCopmTotal > 0n
+          ? initialCopmBalance + quotedCopmTotal
+          : finalCopmBalance;
 
       setSwapResult({
         copmBalance:
-          finalCopmBalance !== undefined
-            ? formatCopmUnits(finalCopmBalance, copmToken.decimals)
+          displayedCopmBalance !== undefined
+            ? formatCopmUnits(displayedCopmBalance, copmToken.decimals)
             : "No disponible",
         receivedCopm:
           receivedCopm !== undefined
