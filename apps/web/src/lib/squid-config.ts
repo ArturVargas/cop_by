@@ -1,6 +1,8 @@
 import { isAddress, type Address } from "viem";
 
 export const SQUID_API_BASE_URL = "https://v2.api.squidrouter.com";
+export const SQUID_INTEGRATOR_FEE_BPS = 25; // 0.25%, configured by Squid for this integrator id.
+export const SQUID_INTEGRATOR_FEE_SPLIT = "50/50";
 
 export function getSquidIntegratorId() {
   return process.env.NEXT_PUBLIC_SQUID_INTEGRATOR_ID ?? "";
@@ -127,6 +129,20 @@ export async function getSquidRoute(params: SquidRouteParams) {
     requestId,
     route: payload.route,
   } satisfies SquidRouteResult;
+}
+
+export function getSquidServiceFeeUsd(route?: SquidRoute) {
+  const costs = route?.estimate?.feeCosts ?? [];
+  const serviceCosts = costs.filter((cost) =>
+    cost.name?.toLowerCase().includes("service")
+  );
+  const relevantCosts = serviceCosts.length ? serviceCosts : costs;
+  const total = relevantCosts.reduce(
+    (sum, cost) => sum + Number(cost.amountUsd ?? 0),
+    0
+  );
+
+  return Number.isFinite(total) ? total : 0;
 }
 
 export async function getSquidStatus(params: SquidStatusParams) {

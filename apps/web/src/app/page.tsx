@@ -40,8 +40,11 @@ import {
 } from "@/lib/mock-portfolio";
 import { getTargetNetwork } from "@/lib/network-config";
 import {
+  getSquidServiceFeeUsd,
   getSquidRoute,
   getSquidStatus,
+  SQUID_INTEGRATOR_FEE_BPS,
+  SQUID_INTEGRATOR_FEE_SPLIT,
   type SquidRouteResult,
 } from "@/lib/squid-config";
 import {
@@ -227,9 +230,7 @@ function getRouteToAmount(routeResult: SquidRouteResult) {
 }
 
 function getRouteFeeUsd(routeResult: SquidRouteResult) {
-  const costs = routeResult.route?.estimate?.feeCosts ?? [];
-  const total = costs.reduce((sum, cost) => sum + Number(cost.amountUsd ?? 0), 0);
-  return Number.isFinite(total) ? total : 0;
+  return getSquidServiceFeeUsd(routeResult.route);
 }
 
 function getPurchaseUsdAmount(copAmount: string, copPerUsd: number) {
@@ -2088,9 +2089,14 @@ function BuyCopmScreen({
 
             <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
               <div className="rounded-[8px] bg-[#F7F8F5] p-3">
-                <p className="text-xs text-[#66736B]">Fee</p>
+                <p className="text-xs text-[#66736B]">
+                  Fee Squid {(SQUID_INTEGRATOR_FEE_BPS / 100).toFixed(2)}%
+                </p>
                 <p className="mt-1 font-semibold">
                   {swapFeeUsd === null ? "Por cotizar" : formatUsd(swapFeeUsd)}
+                </p>
+                <p className="mt-1 text-[11px] font-medium text-[#66736B]">
+                  Split {SQUID_INTEGRATOR_FEE_SPLIT}
                 </p>
               </div>
               <div className="rounded-[8px] bg-[#F7F8F5] p-3">
