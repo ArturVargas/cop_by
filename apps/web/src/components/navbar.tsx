@@ -24,7 +24,7 @@ export function Navbar() {
             alt="COPm"
             className="h-7 w-7 rounded-[8px]"
           />
-          <div>
+          <div className="hidden sm:block">
             <p className="text-sm font-semibold leading-none text-[#17211B]">
               COPm
             </p>
