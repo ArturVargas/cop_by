@@ -2,7 +2,11 @@
 
 import { HelpCircle } from "lucide-react";
 
-import { ConnectButton, CopmBalanceBadge } from "@/components/connect-button";
+import {
+  AddressBadge,
+  ConnectButton,
+  CopmBalanceBadge,
+} from "@/components/connect-button";
 import { useWalletAdapter } from "@/hooks/use-wallet-adapter";
 
 const COPM_ICON_URL = "https://app.mento.org/tokens/COPm.svg";
@@ -34,6 +38,7 @@ export function Navbar() {
           {isMiniPay ? (
             <>
               <CopmBalanceBadge />
+              <AddressBadge />
               <span className="inline-flex h-8 items-center rounded-full border border-[#DDE4DC] bg-white px-2.5 text-[11px] font-semibold text-[#66736B]">
                 {networkName}
               </span>

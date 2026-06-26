@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Wallet, WifiOff } from "lucide-react";
 import { erc20Abi, formatUnits } from "viem";
 import { useReadContract } from "wagmi";
@@ -18,6 +19,11 @@ function formatCopmBalance(value?: bigint, decimals = 18) {
   return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 0,
   }).format(amount);
+}
+
+function formatAddressPreview(address: string) {
+  if (address.length <= 14) return address;
+  return `${address.slice(0, 7)}...${address.slice(-4)}`;
 }
 
 export function CopmBalanceBadge() {
@@ -57,9 +63,39 @@ export function CopmBalanceBadge() {
   );
 }
 
+export function AddressBadge() {
+  const { address, isConnected } = useWalletAdapter();
+  const [copied, setCopied] = useState(false);
+
+  if (!isConnected || !address) return null;
+
+  const copyAddress = () => {
+    void navigator.clipboard?.writeText(address);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  };
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={copyAddress}
+        aria-label="Copiar address conectado"
+        className="inline-flex h-9 max-w-[128px] items-center rounded-full border border-[#DDE4DC] bg-white px-2.5 text-[11px] font-semibold text-[#17211B]"
+      >
+        <span className="truncate">{formatAddressPreview(address)}</span>
+      </button>
+      {copied && (
+        <span className="absolute right-0 top-10 rounded-full bg-[#17211B] px-2 py-1 text-[10px] font-semibold text-white shadow-sm">
+          Copied
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function ConnectButton() {
   const {
-    address,
     hasProvider,
     isConnected,
     isConnecting,
@@ -97,9 +133,7 @@ export function ConnectButton() {
     return (
       <div className="flex items-center gap-1.5">
         <CopmBalanceBadge />
-        <span className="inline-flex h-9 items-center rounded-full border border-[#DDE4DC] bg-white px-3 text-xs font-semibold text-[#17211B]">
-          {address?.slice(0, 6)}...{address?.slice(-4)}
-        </span>
+        <AddressBadge />
       </div>
     );
   }
