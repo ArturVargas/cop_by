@@ -5,6 +5,7 @@ import { ensureSwapTable, getSql } from "@/lib/db";
 type CreateSwapBody = {
   chainId?: number;
   intentId?: string;
+  recipientAddress?: string;
   requestedCopm?: string;
   userAddress?: string;
 };
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
       INSERT INTO swap_intents (
         intent_id,
         user_address,
+        recipient_address,
         chain_id,
         status,
         requested_copm
@@ -28,6 +30,7 @@ export async function POST(request: Request) {
       VALUES (
         ${body.intentId},
         ${body.userAddress.toLowerCase()},
+        ${(body.recipientAddress ?? body.userAddress).toLowerCase()},
         ${body.chainId},
         'created',
         ${body.requestedCopm}

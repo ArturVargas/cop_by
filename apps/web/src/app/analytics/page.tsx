@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { ensureSwapTable, getSql } from "@/lib/db";
+import { ensureSwapTable, ensureTransferTable, getSql } from "@/lib/db";
 import { getTargetNetwork } from "@/lib/network-config";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +25,16 @@ type TokenSpend = {
   amount?: string;
   amountUsd?: number;
   symbol?: string;
+};
+
+type TransferRow = {
+  copm_amount: string;
+  created_at: string;
+  recipient_address: string;
+  sender_address: string;
+  status: string;
+  transfer_id: string;
+  tx_hash: string | null;
 };
 
 function asArray(value: unknown) {
@@ -82,6 +92,16 @@ async function getRows() {
   `) as SwapRow[];
 }
 
+async function getTransferRows() {
+  await ensureTransferTable();
+  return (await getSql()`
+    SELECT *
+    FROM copm_transfers
+    ORDER BY created_at DESC
+    LIMIT 5000
+  `) as TransferRow[];
+}
+
 function StatCard({
   label,
   tone,
@@ -106,6 +126,7 @@ function StatCard({
 
 export default async function AnalyticsPage() {
   const rows = await getRows();
+  const transfers = await getTransferRows();
   const targetNetwork = getTargetNetwork();
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -114,6 +135,9 @@ export default async function AnalyticsPage() {
 
   const total = rows.length;
   const completed = rows.filter(isCompleted);
+  const completedTransfers = transfers.filter((row) =>
+    ["confirmed", "logged"].includes(row.status)
+  );
   const logged = rows.filter((row) => row.status === "logged");
   const failed = rows.filter((row) => row.status === "failed" || row.error);
   const todayRows = completed.filter((row) => new Date(row.created_at) >= today);
@@ -137,6 +161,10 @@ export default async function AnalyticsPage() {
   const multiToken = completed.filter((row) => getTokensSpent(row).length > 1).length;
   const txCount = completed.reduce(
     (sum, row) => sum + asArray(row.swap_tx_hashes).length,
+    0
+  );
+  const transferVolume = completedTransfers.reduce(
+    (sum, row) => sum + Number(row.copm_amount ?? 0),
     0
   );
   const tokenTable = Object.entries(
@@ -260,6 +288,29 @@ export default async function AnalyticsPage() {
               tone="bg-[#FBE6E8]"
               value={percent(total ? (failed.length / total) * 100 : 0)}
               sub={`${number(failed.length)} failed intents`}
+            />
+          </div>
+        </section>
+
+        <section className="mt-16">
+          <h2 className="text-3xl font-black uppercase">Transfers</h2>
+          <div className="mt-8 grid gap-4 md:grid-cols-3">
+            <StatCard
+              label="Completed transfers"
+              tone="bg-[#E1F1EA]"
+              value={number(completedTransfers.length)}
+            />
+            <StatCard
+              label="COPm transferred"
+              tone="bg-[#EEF0FA]"
+              value={number(transferVolume, 2)}
+            />
+            <StatCard
+              label="Transfer users"
+              tone="bg-[#FFEAC8]"
+              value={number(
+                new Set(completedTransfers.map((row) => row.sender_address)).size
+              )}
             />
           </div>
         </section>

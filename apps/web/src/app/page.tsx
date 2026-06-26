@@ -46,7 +46,9 @@ import {
 } from "@/lib/squid-config";
 import {
   createSwapIntent,
+  createCopmTransfer,
   logSwapOnchain,
+  updateCopmTransfer,
   updateSwapIntent,
 } from "@/lib/swap-logging";
 
@@ -55,17 +57,23 @@ const stepColors = ["#D9CCF7", "#A98BE5", "#6D45B8"];
 const FALLBACK_COP_PER_USD = 3400;
 const MIN_PURCHASE_USD = 1;
 const MIN_SWAP_LEG_USD = 0.01;
+const MAX_COPM_AMOUNT = 10_000_000;
 const USD_PLAN_TOLERANCE = 0.001;
+const RECIPIENTS_STORAGE_KEY = "cop_by_recent_recipients";
 const TOKEN_ORDER_STORAGE_KEY = "cop_by_token_order";
 const SQUID_CELO_APPROVAL_TARGET =
   "0xce16F69375520ab01377ce7B88f5BA8C48F8D666" as Address;
 
 type SwapStatus = "idle" | "quoting" | "buying" | "complete" | "error";
 type SwapProgress = "idle" | "quoting" | "confirming" | "processing";
+type ActionMode = "buy" | "transfer";
 type SwapResult = {
+  amountLabel?: string;
   copmBalance: string;
   receivedCopm: string;
+  recipientAddress?: string;
   shortfallMessage?: string;
+  title?: string;
   txHash: string;
   txUrl: string;
 };
@@ -75,6 +83,7 @@ type ShortfallQuote = {
   quotedUsd: number;
   message: string;
 };
+type TransferStatus = "idle" | "confirming" | "sending" | "complete" | "error";
 type SwapPlanLeg = {
   token: PortfolioToken;
   usdAmount: number;
@@ -244,6 +253,30 @@ function saveTokenOrder(tokens: PortfolioToken[]) {
     TOKEN_ORDER_STORAGE_KEY,
     tokens.map((token) => token.symbol).join(",")
   );
+}
+
+function getRecentRecipients() {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(RECIPIENTS_STORAGE_KEY) ?? "[]"
+    );
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string" && isAddress(item))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentRecipient(address: string) {
+  if (typeof window === "undefined" || !isAddress(address)) return;
+  const normalized = address.toLowerCase();
+  const next = [
+    normalized,
+    ...getRecentRecipients().filter((item) => item.toLowerCase() !== normalized),
+  ].slice(0, 5);
+  window.localStorage.setItem(RECIPIENTS_STORAGE_KEY, JSON.stringify(next));
 }
 
 function getTokenAmountForUsd(
@@ -446,8 +479,17 @@ export default function Home() {
   const { sendTransactionAsync } = useSendTransaction();
   const { writeContractAsync } = useWriteContract();
   const [step, setStep] = useState(0);
+  const [actionMode, setActionMode] = useState<ActionMode>("buy");
   const [tokens, setTokens] = useState(mockPortfolioTokens);
   const [copAmount, setCopAmount] = useState(purchasePreview.copAmount);
+  const [recipientMode, setRecipientMode] = useState<"self" | "other">("self");
+  const [recipientAddress, setRecipientAddress] = useState("");
+  const [recentRecipients, setRecentRecipients] = useState<string[]>([]);
+  const [transferAmount, setTransferAmount] = useState("");
+  const [transferConfirming, setTransferConfirming] = useState(false);
+  const [transferError, setTransferError] = useState<string | null>(null);
+  const [transferStatus, setTransferStatus] = useState<TransferStatus>("idle");
+  const [copmBalance, setCopmBalance] = useState<bigint | undefined>();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [activating, setActivating] = useState<string | null>(null);
   const [swapStatus, setSwapStatus] = useState<SwapStatus>("idle");
@@ -479,6 +521,20 @@ export default function Home() {
   );
   const allActive = pendingTokens.length === 0;
 
+  const refreshCopmBalance = async () => {
+    if (!publicClient || !portfolio.address || !copmToken.address) {
+      setCopmBalance(undefined);
+      return;
+    }
+    const balance = (await publicClient.readContract({
+      address: copmToken.address,
+      abi: erc20Abi,
+      functionName: "balanceOf",
+      args: [portfolio.address],
+    })) as bigint;
+    setCopmBalance(balance);
+  };
+
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [step]);
@@ -486,6 +542,14 @@ export default function Home() {
   useEffect(() => {
     setTokens((currentTokens) => sortTokensBySavedOrder(currentTokens));
   }, []);
+
+  useEffect(() => {
+    setRecentRecipients(getRecentRecipients());
+  }, []);
+
+  useEffect(() => {
+    void refreshCopmBalance();
+  }, [portfolio.address, publicClient, copmToken.address]);
 
   useEffect(() => {
     if (isLivePortfolio && !isLoadingPortfolio && hasCompatibleTokens && allActive) {
@@ -739,6 +803,11 @@ export default function Home() {
     setShortfallQuote(null);
   };
 
+  const updateRecipientAddress = (value: string) => {
+    setRecipientAddress(value.trim());
+    setSwapError(null);
+  };
+
   const approvePurchaseToken = async () => {
     setSwapError(null);
 
@@ -809,6 +878,15 @@ export default function Home() {
       if (usdAmount < MIN_PURCHASE_USD) {
         throw new Error("Minimum purchase amount");
       }
+      if (parseCopAmount(copAmount) > MAX_COPM_AMOUNT) {
+        throw new Error("El monto maximo es 10,000,000 COPm.");
+      }
+
+      const swapRecipient =
+        recipientMode === "other" ? recipientAddress : portfolio.address;
+      if (!isAddress(swapRecipient)) {
+        throw new Error("Ingresa una wallet destino valida.");
+      }
 
       const swapPlan = getApprovedSwapPlan(tokens, tokenPrices, usdAmount);
       const requestedCopm = parseCopmUnits(copAmount, copmToken.decimals);
@@ -821,6 +899,7 @@ export default function Home() {
       await createSwapIntent({
         chainId: targetNetwork.chainId,
         intentId,
+        recipientAddress: swapRecipient,
         requestedCopm: copAmount,
         userAddress: portfolio.address,
       });
@@ -869,7 +948,7 @@ export default function Home() {
             fromChain: targetNetwork.squidChainId,
             fromToken: leg.token.address!,
             slippage: 0.3,
-            toAddress: portfolio.address,
+            toAddress: swapRecipient,
             toChain: targetNetwork.squidChainId,
             toToken: copmToken.address,
           });
@@ -1032,17 +1111,27 @@ export default function Home() {
 
       setSwapResult({
         copmBalance:
-          displayedCopmBalance !== undefined
+          swapRecipient.toLowerCase() !== portfolio.address.toLowerCase()
+            ? "No disponible"
+            : displayedCopmBalance !== undefined
             ? formatCopmUnits(displayedCopmBalance, copmToken.decimals)
             : "No disponible",
         receivedCopm:
           receivedCopm !== undefined
             ? formatCopmUnits(receivedCopm, copmToken.decimals)
             : formatCopmUnits(requestedCopm, copmToken.decimals),
+        recipientAddress:
+          swapRecipient.toLowerCase() !== portfolio.address.toLowerCase()
+            ? swapRecipient
+            : undefined,
         shortfallMessage,
         txHash: lastHash ?? "",
         txUrl: `${targetNetwork.blockExplorerUrl}/tx/${lastHash}`,
       });
+      if (swapRecipient.toLowerCase() !== portfolio.address.toLowerCase()) {
+        saveRecentRecipient(swapRecipient);
+        setRecentRecipients(getRecentRecipients());
+      }
       if (receivedCopm !== undefined) {
         void updateSwapIntent(intentId, {
           copmReceived: formatUnits(receivedCopm, copmToken.decimals),
@@ -1059,6 +1148,70 @@ export default function Home() {
       setSwapStatus("error");
       setSwapProgress("idle");
       setSwapError(getFriendlyErrorMessage(error));
+    }
+  };
+
+  const sendCopmTransfer = async () => {
+    setTransferError(null);
+
+    try {
+      if (!portfolio.address || !copmToken.address) throw new Error("Wallet not ready");
+      if (!isAddress(recipientAddress)) throw new Error("Ingresa una wallet destino valida.");
+
+      const amountNumber = parseCopAmount(transferAmount);
+      if (amountNumber <= 0) throw new Error("Ingresa un monto mayor a 0.");
+      if (amountNumber > MAX_COPM_AMOUNT) {
+        throw new Error("El monto maximo es 10,000,000 COPm.");
+      }
+
+      const amount = parseCopmUnits(transferAmount, copmToken.decimals);
+      if (copmBalance !== undefined && amount > copmBalance) {
+        throw new Error("Saldo COPm insuficiente.");
+      }
+
+      if (!transferConfirming) {
+        setTransferConfirming(true);
+        return;
+      }
+
+      const transferId = createIntentId();
+      setTransferStatus("confirming");
+      await createCopmTransfer({
+        chainId: targetNetwork.chainId,
+        copmAmount: transferAmount,
+        recipientAddress,
+        senderAddress: portfolio.address,
+        transferId,
+      });
+
+      const hash = await writeContractAsync({
+        address: copmToken.address,
+        abi: erc20Abi,
+        functionName: "transfer",
+        args: [recipientAddress, amount],
+      });
+      setTransferStatus("sending");
+      await updateCopmTransfer(transferId, { status: "submitted", txHash: hash });
+      await publicClient?.waitForTransactionReceipt({ hash });
+      await updateCopmTransfer(transferId, { status: "confirmed", txHash: hash });
+
+      saveRecentRecipient(recipientAddress);
+      setRecentRecipients(getRecentRecipients());
+      setTransferConfirming(false);
+      setTransferStatus("complete");
+      setSwapResult({
+        amountLabel: "Enviado",
+        copmBalance: "Actualizando",
+        receivedCopm: transferAmount,
+        recipientAddress,
+        title: "Transferencia completada",
+        txHash: hash,
+        txUrl: `${targetNetwork.blockExplorerUrl}/tx/${hash}`,
+      });
+      await refreshCopmBalance();
+    } catch (error) {
+      setTransferStatus("error");
+      setTransferError(getFriendlyErrorMessage(error));
     }
   };
 
@@ -1107,27 +1260,64 @@ export default function Home() {
         )}
 
         {step === 2 && (
-          <BuyCopmScreen
-            copAmount={copAmount}
-            copPerUsd={copPerUsd}
-            hasCompatibleTokens={hasCompatibleTokens}
-            isLive={isLivePortfolio}
-            totalUsd={effectiveTotalUsd}
-            detailsOpen={detailsOpen}
-            swapError={swapError}
-            swapProgress={swapProgress}
-            swapStatus={swapStatus}
-            swapFeeUsd={swapFeeUsd}
-            shortfallQuote={shortfallQuote}
-            tokenPrices={tokenPrices}
-            tokens={tokens}
-            activating={activating}
-            approvalTargets={approvalTargets}
-            onAmountChange={updateCopAmount}
-            onApprovePurchase={approvePurchaseToken}
-            onBuy={buyCopm}
-            onDetailsToggle={() => setDetailsOpen((open) => !open)}
-          />
+          <>
+            <ActionModeTabs mode={actionMode} onChange={setActionMode} />
+            {actionMode === "buy" ? (
+              <BuyCopmScreen
+                copAmount={copAmount}
+                copPerUsd={copPerUsd}
+                hasCompatibleTokens={hasCompatibleTokens}
+                isLive={isLivePortfolio}
+                totalUsd={effectiveTotalUsd}
+                detailsOpen={detailsOpen}
+                swapError={swapError}
+                swapProgress={swapProgress}
+                swapStatus={swapStatus}
+                swapFeeUsd={swapFeeUsd}
+                shortfallQuote={shortfallQuote}
+                tokenPrices={tokenPrices}
+                tokens={tokens}
+                activating={activating}
+                approvalTargets={approvalTargets}
+                recipientAddress={recipientAddress}
+                recipientMode={recipientMode}
+                recentRecipients={recentRecipients}
+                onAmountChange={updateCopAmount}
+                onApprovePurchase={approvePurchaseToken}
+                onBuy={buyCopm}
+                onDetailsToggle={() => setDetailsOpen((open) => !open)}
+                onRecipientAddressChange={updateRecipientAddress}
+                onRecipientModeChange={setRecipientMode}
+              />
+            ) : (
+              <TransferCopmScreen
+                amount={transferAmount}
+                balance={copmBalance}
+                confirming={transferConfirming}
+                error={transferError}
+                recipientAddress={recipientAddress}
+                recentRecipients={recentRecipients}
+                status={transferStatus}
+                tokenDecimals={copmToken.decimals}
+                onAmountChange={(value) => {
+                  setTransferAmount(cleanCopInput(value));
+                  setTransferConfirming(false);
+                  setTransferError(null);
+                }}
+                onMax={() => {
+                  if (copmBalance !== undefined) {
+                    setTransferAmount(formatUnits(copmBalance, copmToken.decimals));
+                    setTransferConfirming(false);
+                  }
+                }}
+                onRecipientAddressChange={(value) => {
+                  updateRecipientAddress(value);
+                  setTransferConfirming(false);
+                }}
+                onSend={sendCopmTransfer}
+              />
+            )}
+          </>
         )}
         <footer className="mt-auto py-5 text-center">
           <Link
@@ -1581,6 +1771,33 @@ function TokenEmptyStateMessage({ userAddress }: { userAddress?: string }) {
   );
 }
 
+function ActionModeTabs({
+  mode,
+  onChange,
+}: {
+  mode: ActionMode;
+  onChange: (mode: ActionMode) => void;
+}) {
+  return (
+    <div className="mb-3 grid grid-cols-2 gap-2 rounded-[8px] bg-white p-1">
+      {(["buy", "transfer"] as const).map((item) => (
+        <button
+          key={item}
+          type="button"
+          onClick={() => onChange(item)}
+          className={`h-10 rounded-[8px] text-sm font-semibold ${
+            mode === item
+              ? "bg-[#6D45B8] text-white"
+              : "bg-[#F7F8F5] text-[#66736B]"
+          }`}
+        >
+          {item === "buy" ? "Comprar" : "Transferir"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function BuyCopmScreen({
   copAmount,
   copPerUsd,
@@ -1597,10 +1814,15 @@ function BuyCopmScreen({
   tokens,
   activating,
   approvalTargets,
+  recipientAddress,
+  recipientMode,
+  recentRecipients,
   onAmountChange,
   onApprovePurchase,
   onBuy,
   onDetailsToggle,
+  onRecipientAddressChange,
+  onRecipientModeChange,
 }: {
   copAmount: string;
   copPerUsd: number;
@@ -1617,10 +1839,15 @@ function BuyCopmScreen({
   tokens: PortfolioToken[];
   activating: string | null;
   approvalTargets: Partial<Record<string, Address>>;
+  recipientAddress: string;
+  recipientMode: "self" | "other";
+  recentRecipients: string[];
   onAmountChange: (value: string) => void;
   onApprovePurchase: () => void;
   onBuy: () => void;
   onDetailsToggle: () => void;
+  onRecipientAddressChange: (value: string) => void;
+  onRecipientModeChange: (mode: "self" | "other") => void;
 }) {
   const hasNoFunds = isLive && !hasCompatibleTokens;
   const requestedUsd = getPurchaseUsdAmount(copAmount, copPerUsd);
@@ -1657,6 +1884,7 @@ function BuyCopmScreen({
     !isBelowMinimum &&
     !hasInsufficientFunds &&
     !needsApprovedToken &&
+    (recipientMode === "self" || isAddress(recipientAddress)) &&
     requestedUsd > 0;
   const isBusy = swapStatus === "quoting" || swapStatus === "buying";
   const isApproving = Boolean(activating && approvalToken?.symbol === activating);
@@ -1717,6 +1945,38 @@ function BuyCopmScreen({
         <p className="mt-2 text-xs font-medium text-[#66736B]">
           Equivale a {formatUsd(requestedUsd)} USD aprox.
         </p>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => onRecipientModeChange("self")}
+            className={`h-10 rounded-[8px] text-sm font-semibold ${
+              recipientMode === "self"
+                ? "bg-[#E9DFFC] text-[#56359A]"
+                : "bg-[#F7F8F5] text-[#66736B]"
+            }`}
+          >
+            Mi wallet
+          </button>
+          <button
+            type="button"
+            onClick={() => onRecipientModeChange("other")}
+            className={`h-10 rounded-[8px] text-sm font-semibold ${
+              recipientMode === "other"
+                ? "bg-[#E9DFFC] text-[#56359A]"
+                : "bg-[#F7F8F5] text-[#66736B]"
+            }`}
+          >
+            Otra wallet
+          </button>
+        </div>
+        {recipientMode === "other" && (
+          <RecipientAddressInput
+            address={recipientAddress}
+            recentRecipients={recentRecipients}
+            warning="Verifica esta wallet. Si compras COPm para una wallet equivocada, no podremos revertirlo."
+            onChange={onRecipientAddressChange}
+          />
+        )}
         {(hasNoFunds || hasInsufficientFunds) && (
           <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
             {hasNoFunds
@@ -1858,6 +2118,150 @@ function TokenMark({ token }: { token: PortfolioToken }) {
   );
 }
 
+function RecipientAddressInput({
+  address,
+  recentRecipients,
+  warning,
+  onChange,
+}: {
+  address: string;
+  recentRecipients: string[];
+  warning: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="mt-3 space-y-2">
+      <input
+        inputMode="text"
+        placeholder="0x..."
+        value={address}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-11 w-full rounded-[8px] border border-[#DDE4DC] bg-[#F7F8F5] px-3 font-mono text-sm outline-none ring-[#6D45B8] focus:ring-2"
+      />
+      {recentRecipients.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {recentRecipients.map((recipient) => (
+            <button
+              key={recipient}
+              type="button"
+              onClick={() => onChange(recipient)}
+              className="rounded-full bg-[#F7F8F5] px-3 py-1 text-xs font-semibold text-[#66736B]"
+            >
+              {formatAddressPreview(recipient)}
+            </button>
+          ))}
+        </div>
+      )}
+      <p className="rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-xs font-semibold leading-5 text-[#17211B]">
+        {warning}
+      </p>
+    </div>
+  );
+}
+
+function TransferCopmScreen({
+  amount,
+  balance,
+  confirming,
+  error,
+  recipientAddress,
+  recentRecipients,
+  status,
+  tokenDecimals,
+  onAmountChange,
+  onMax,
+  onRecipientAddressChange,
+  onSend,
+}: {
+  amount: string;
+  balance?: bigint;
+  confirming: boolean;
+  error: string | null;
+  recipientAddress: string;
+  recentRecipients: string[];
+  status: TransferStatus;
+  tokenDecimals: number;
+  onAmountChange: (value: string) => void;
+  onMax: () => void;
+  onRecipientAddressChange: (value: string) => void;
+  onSend: () => void;
+}) {
+  const balanceDisplay =
+    balance === undefined ? "0" : formatCopmUnits(balance, tokenDecimals);
+  const isBusy = status === "confirming" || status === "sending";
+  const buttonLabel =
+    status === "confirming"
+      ? "Confirma en tu wallet"
+      : status === "sending"
+        ? "Enviando"
+        : confirming
+          ? "Enviar COPm"
+          : "Continuar";
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
+        <p className="text-sm font-medium text-[#66736B]">Disponible</p>
+        <p className="mt-1 text-2xl font-semibold leading-none">
+          {balanceDisplay} COPm
+        </p>
+      </div>
+
+      <div className="mt-3 rounded-[8px] border border-[#DDE4DC] bg-white p-4">
+        <label className="block text-sm font-semibold text-[#17211B]">
+          Wallet destino
+        </label>
+        <RecipientAddressInput
+          address={recipientAddress}
+          recentRecipients={recentRecipients}
+          warning="Verifica esta wallet. Las transferencias de COPm no se pueden revertir."
+          onChange={onRecipientAddressChange}
+        />
+
+        <label className="mt-4 block text-sm font-semibold text-[#17211B]">
+          Monto COPm
+        </label>
+        <div className="mt-2 flex gap-2">
+          <input
+            inputMode="numeric"
+            value={amount}
+            onChange={(event) => onAmountChange(event.target.value)}
+            className="h-[52px] min-w-0 flex-1 rounded-[8px] border border-[#DDE4DC] bg-[#F7F8F5] px-4 text-2xl font-semibold outline-none ring-[#6D45B8] focus:ring-2"
+          />
+          <button
+            type="button"
+            onClick={onMax}
+            className="h-[52px] rounded-[8px] bg-[#E9DFFC] px-4 text-sm font-semibold text-[#56359A]"
+          >
+            Max
+          </button>
+        </div>
+
+        {confirming && (
+          <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
+            Enviaras {amount || "0"} COPm a{" "}
+            {formatAddressPreview(recipientAddress)}. Verifica la wallet antes
+            de confirmar.
+          </div>
+        )}
+        {error && (
+          <div className="mt-3 rounded-[8px] bg-[#FDECEC] px-3 py-2 text-sm font-medium leading-5 text-[#8A1F1F]">
+            {error}
+          </div>
+        )}
+
+        <Button
+          className="mt-4 h-12 w-full rounded-[8px] bg-[#6D45B8] text-base font-semibold text-white hover:bg-[#56359A] disabled:bg-[#C8B9E8]"
+          disabled={isBusy}
+          onClick={onSend}
+        >
+          {buttonLabel}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function SwapSuccessModal({
   result,
   onClose,
@@ -1871,8 +2275,12 @@ function SwapSuccessModal({
         <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#E6F4EE] text-[#0E7C4F]">
           <Check className="h-5 w-5" />
         </div>
-        <h2 className="text-xl font-semibold">Compra completada</h2>
-        <p className="mt-2 text-sm text-[#66736B]">Recibiste</p>
+        <h2 className="text-xl font-semibold">
+          {result.title ?? "Compra completada"}
+        </h2>
+        <p className="mt-2 text-sm text-[#66736B]">
+          {result.amountLabel ?? "Recibiste"}
+        </p>
         <p className="mt-1 text-3xl font-semibold text-[#0E7C4F]">
           {result.receivedCopm} COPm
         </p>
@@ -1880,6 +2288,11 @@ function SwapSuccessModal({
           <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
             {result.shortfallMessage}
           </div>
+        )}
+        {result.recipientAddress && (
+          <p className="mt-2 text-sm font-semibold text-[#66736B]">
+            Destino {formatAddressPreview(result.recipientAddress)}
+          </p>
         )}
 
         <div className="mt-4 space-y-3 rounded-[8px] bg-[#F7F8F5] p-3 text-sm">
