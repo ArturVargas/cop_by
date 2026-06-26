@@ -65,8 +65,15 @@ type SwapProgress = "idle" | "quoting" | "confirming" | "processing";
 type SwapResult = {
   copmBalance: string;
   receivedCopm: string;
+  shortfallMessage?: string;
   txHash: string;
   txUrl: string;
+};
+type ShortfallQuote = {
+  copAmount: string;
+  quotedCopm: string;
+  quotedUsd: number;
+  message: string;
 };
 type SwapPlanLeg = {
   token: PortfolioToken;
@@ -448,6 +455,9 @@ export default function Home() {
   const [swapError, setSwapError] = useState<string | null>(null);
   const [swapFeeUsd, setSwapFeeUsd] = useState<number | null>(null);
   const [swapResult, setSwapResult] = useState<SwapResult | null>(null);
+  const [shortfallQuote, setShortfallQuote] = useState<ShortfallQuote | null>(
+    null
+  );
   const copPerUsd = tokenPrices.COP_PER_USD ?? FALLBACK_COP_PER_USD;
 
   const totalUsd = useMemo(
@@ -726,6 +736,7 @@ export default function Home() {
     setSwapProgress("idle");
     setSwapError(null);
     setSwapFeeUsd(null);
+    setShortfallQuote(null);
   };
 
   const approvePurchaseToken = async () => {
@@ -834,8 +845,19 @@ export default function Home() {
         amountUsd: number;
         symbol: string;
       }> = [];
+      let shortfallMessage: string | undefined;
+      const quotedLegs: Array<{
+        leg: SwapPlanLeg;
+        legFromAmount: bigint;
+        routeResult: SquidRouteResult;
+        transactionRequest: {
+          data: `0x${string}`;
+          target: Address;
+          value?: string;
+        };
+      }> = [];
 
-      for (const [index, leg] of swapPlan.entries()) {
+      for (const leg of swapPlan) {
         let routeResult: SquidRouteResult | undefined;
         let quotedCopm: bigint | undefined;
         let legFromAmount = leg.fromAmount;
@@ -886,6 +908,46 @@ export default function Home() {
           throw new Error("Invalid Squid transaction");
         }
 
+        quotedLegs.push({
+          leg,
+          legFromAmount,
+          routeResult,
+          transactionRequest: {
+            data: transactionRequest.data,
+            target: transactionRequest.target,
+            value: transactionRequest.value,
+          },
+        });
+      }
+
+      if (quotedCopmTotal < requestedCopm) {
+        const quotedCopm = formatCopmUnits(quotedCopmTotal, copmToken.decimals);
+        const quotedUsd = Number(formatUnits(quotedCopmTotal, copmToken.decimals)) / copPerUsd;
+
+        shortfallMessage = `No pudimos completar el monto exacto. La mejor cotizacion disponible entrega ${quotedCopm} COPm.`;
+
+        if (
+          shortfallQuote?.copAmount !== copAmount ||
+          shortfallQuote.quotedCopm !== quotedCopm
+        ) {
+          setShortfallQuote({
+            copAmount,
+            quotedCopm,
+            quotedUsd,
+            message: shortfallMessage,
+          });
+          setSwapStatus("idle");
+          setSwapProgress("idle");
+          return;
+        }
+      }
+
+      setShortfallQuote(null);
+
+      for (const [index, quotedLeg] of quotedLegs.entries()) {
+        const { leg, legFromAmount, routeResult, transactionRequest } = quotedLeg;
+        const isLastLeg = index === quotedLegs.length - 1;
+
         setSwapStatus("buying");
         setSwapProgress("confirming");
         const hash = await sendTransactionAsync({
@@ -903,7 +965,7 @@ export default function Home() {
             tokenPrice,
           symbol: leg.token.symbol,
         });
-        void updateSwapIntent(intentId, {
+        await updateSwapIntent(intentId, {
           squidRequestIds,
           status: "submitted",
           swapTxHashes,
@@ -914,17 +976,7 @@ export default function Home() {
         const receipt = await publicClient?.waitForTransactionReceipt({ hash });
         if (receipt) swapReceipts.push(receipt);
         await waitForSquidStatus(routeResult, hash, targetNetwork.squidChainId);
-
-        if (index < swapPlan.length - 1) setSwapProgress("quoting");
-      }
-
-      if (quotedCopmTotal < requestedCopm) {
-        throw new Error(
-          `No pudimos completar el monto exacto. La mejor cotizacion disponible entrega ${formatCopmUnits(
-            quotedCopmTotal,
-            copmToken.decimals
-          )} COPm.`
-        );
+        if (!isLastLeg) setSwapProgress("quoting");
       }
       let finalCopmBalance = publicClient
         ? ((await publicClient.readContract({
@@ -987,6 +1039,7 @@ export default function Home() {
           receivedCopm !== undefined
             ? formatCopmUnits(receivedCopm, copmToken.decimals)
             : formatCopmUnits(requestedCopm, copmToken.decimals),
+        shortfallMessage,
         txHash: lastHash ?? "",
         txUrl: `${targetNetwork.blockExplorerUrl}/tx/${lastHash}`,
       });
@@ -1065,6 +1118,7 @@ export default function Home() {
             swapProgress={swapProgress}
             swapStatus={swapStatus}
             swapFeeUsd={swapFeeUsd}
+            shortfallQuote={shortfallQuote}
             tokenPrices={tokenPrices}
             tokens={tokens}
             activating={activating}
@@ -1538,6 +1592,7 @@ function BuyCopmScreen({
   swapProgress,
   swapStatus,
   swapFeeUsd,
+  shortfallQuote,
   tokenPrices,
   tokens,
   activating,
@@ -1557,6 +1612,7 @@ function BuyCopmScreen({
   swapProgress: SwapProgress;
   swapStatus: SwapStatus;
   swapFeeUsd: number | null;
+  shortfallQuote: ShortfallQuote | null;
   tokenPrices: TokenUsdPrices;
   tokens: PortfolioToken[];
   activating: string | null;
@@ -1619,7 +1675,9 @@ function BuyCopmScreen({
               ? "Procesando compra"
               : swapStatus === "complete"
                 ? "Completado"
-                : "Comprar COPm";
+                : shortfallQuote?.copAmount === copAmount
+                  ? `Comprar ${shortfallQuote.quotedCopm} COPm`
+                  : "Comprar COPm";
   const progressMessage =
     swapProgress === "confirming"
       ? "Confirma la transaccion en tu wallet para iniciar la compra."
@@ -1685,6 +1743,13 @@ function BuyCopmScreen({
         {swapError && (
           <div className="mt-3 rounded-[8px] bg-[#FDECEC] px-3 py-2 text-sm font-medium leading-5 text-[#8A1F1F]">
             {swapError}
+          </div>
+        )}
+        {shortfallQuote?.copAmount === copAmount && (
+          <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
+            {shortfallQuote.message} Ajusta el monto a{" "}
+            {formatUsd(shortfallQuote.quotedUsd)} USD aprox. o continua con esta
+            cotizacion.
           </div>
         )}
 
@@ -1811,6 +1876,11 @@ function SwapSuccessModal({
         <p className="mt-1 text-3xl font-semibold text-[#0E7C4F]">
           {result.receivedCopm} COPm
         </p>
+        {result.shortfallMessage && (
+          <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
+            {result.shortfallMessage}
+          </div>
+        )}
 
         <div className="mt-4 space-y-3 rounded-[8px] bg-[#F7F8F5] p-3 text-sm">
           <div>
