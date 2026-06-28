@@ -11,6 +11,51 @@ type CreateTransferBody = {
   copmAmount?: string;
 };
 
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const senderAddress = searchParams.get("senderAddress");
+    const limit = Math.min(Number(searchParams.get("limit") ?? 20), 100);
+    const offset = Math.max(Number(searchParams.get("offset") ?? 0), 0);
+
+    if (!senderAddress || !isAddress(senderAddress)) {
+      return NextResponse.json({ error: "Invalid sender address" }, { status: 400 });
+    }
+
+    await ensureTransferTable();
+    const items = await getSql()`
+      SELECT
+        transfer_id,
+        sender_address,
+        recipient_address,
+        copm_amount,
+        status,
+        tx_hash,
+        error,
+        created_at,
+        updated_at
+      FROM copm_transfers
+      WHERE LOWER(sender_address) = ${senderAddress.toLowerCase()}
+      ORDER BY created_at DESC
+      LIMIT ${limit}
+      OFFSET ${offset}
+    `;
+
+    const [{ count }] = await getSql()`
+      SELECT COUNT(*)::int AS count
+      FROM copm_transfers
+      WHERE LOWER(sender_address) = ${senderAddress.toLowerCase()}
+    `;
+
+    return NextResponse.json({ items, total: count });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Could not load transfers" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as CreateTransferBody;
