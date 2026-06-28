@@ -3,6 +3,7 @@ import { isAddress, type Address } from "viem";
 export const SQUID_API_BASE_URL = "https://v2.api.squidrouter.com";
 export const SQUID_INTEGRATOR_FEE_BPS = 25; // 0.25%, configured by Squid for this integrator id.
 export const SQUID_INTEGRATOR_FEE_SPLIT = "50/50";
+export const SQUID_DEFAULT_PREFERRED_DEXES = ["Uniswap V3"] as const;
 
 export function getSquidIntegratorId() {
   return process.env.NEXT_PUBLIC_SQUID_INTEGRATOR_ID ?? "";
@@ -17,14 +18,24 @@ export type SquidRouteParams = {
   fromAmount: string;
   fromChain: string;
   fromToken: Address;
+  prefer?: string[];
   slippage?: number;
   toAddress: Address;
   toChain: string;
   toToken: Address;
 };
 
+type SquidRouteAction = {
+  data?: {
+    dex?: string;
+  };
+  provider?: string;
+  type?: string;
+};
+
 export type SquidRoute = {
   estimate?: {
+    actions?: SquidRouteAction[];
     fromAmount?: string;
     toAmount?: string;
     toAmountMin?: string;
@@ -82,6 +93,57 @@ export type SquidStatusParams = {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function getSquidPreferredDexes() {
+  const configured = process.env.NEXT_PUBLIC_SQUID_PREFER_DEX?.trim();
+  if (!configured) return [...SQUID_DEFAULT_PREFERRED_DEXES];
+
+  const dexes = configured
+    .split(",")
+    .map((dex) => dex.trim())
+    .filter(Boolean);
+
+  return dexes.length ? dexes : [...SQUID_DEFAULT_PREFERRED_DEXES];
+}
+
+export function getSquidRouteProviders(route?: SquidRoute) {
+  const providers = new Set<string>();
+
+  for (const action of route?.estimate?.actions ?? []) {
+    if (action.type === "swap") {
+      if (action.data?.dex) providers.add(action.data.dex);
+      if (action.provider) providers.add(action.provider);
+    }
+  }
+
+  return [...providers];
+}
+
+function isSquidLiquidityRouteError(error: unknown) {
+  if (!(error instanceof SquidApiError)) return false;
+
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("low liquidity") ||
+    message.includes("no route") ||
+    message.includes("route unavailable") ||
+    message.includes("insufficient liquidity")
+  );
+}
+
+export async function getSquidCopmRoute(params: SquidRouteParams) {
+  const preferredDexes = getSquidPreferredDexes();
+
+  if (preferredDexes.length) {
+    try {
+      return await getSquidRoute({ ...params, prefer: preferredDexes });
+    } catch (error) {
+      if (!isSquidLiquidityRouteError(error)) throw error;
+    }
+  }
+
+  return getSquidRoute(params);
 }
 
 export async function getSquidRoute(params: SquidRouteParams) {

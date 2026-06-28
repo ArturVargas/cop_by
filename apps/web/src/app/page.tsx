@@ -48,8 +48,8 @@ import {
 } from "@/lib/mock-portfolio";
 import { getTargetNetwork } from "@/lib/network-config";
 import {
+  getSquidCopmRoute,
   getSquidServiceFeeUsd,
-  getSquidRoute,
   getSquidStatus,
   SQUID_INTEGRATOR_FEE_BPS,
   SQUID_INTEGRATOR_FEE_SPLIT,
@@ -693,7 +693,7 @@ export default function Home() {
     approvalRouteKeyRef.current = routeKey;
     setRouteError(null);
 
-    getSquidRoute({
+    getSquidCopmRoute({
       fromAddress: portfolio.address,
       fromAmount: fromAmount.toString(),
       fromChain: targetNetwork.squidChainId,
@@ -988,7 +988,7 @@ export default function Home() {
         let legFromAmount = leg.fromAmount;
 
         for (let attempt = 0; attempt < 2; attempt += 1) {
-          routeResult = await getSquidRoute({
+          routeResult = await getSquidCopmRoute({
             fromAddress: portfolio.address,
             fromAmount: legFromAmount.toString(),
             fromChain: targetNetwork.squidChainId,
