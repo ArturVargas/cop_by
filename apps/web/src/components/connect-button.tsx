@@ -2,23 +2,17 @@
 
 import { useState } from "react";
 import { Wallet, WifiOff } from "lucide-react";
-import { erc20Abi, formatUnits } from "viem";
+import { erc20Abi } from "viem";
 import { useReadContract } from "wagmi";
 
 import { useWalletAdapter } from "@/hooks/use-wallet-adapter";
+import { formatPesoAmountFromBigInt } from "@/lib/format-peso";
 
 const COPM_ICON_URL = "https://app.mento.org/tokens/COPm.svg";
 
 function formatCopmBalance(value?: bigint, decimals = 18) {
   if (value === undefined) return "0";
-
-  const amount = Math.floor(Number(formatUnits(value, decimals)));
-  if (!Number.isFinite(amount) || amount <= 0) return "0";
-  if (amount > 99_999_999) return "99,999,999+";
-
-  return new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 0,
-  }).format(amount);
+  return formatPesoAmountFromBigInt(value, decimals);
 }
 
 function formatAddressPreview(address: string) {

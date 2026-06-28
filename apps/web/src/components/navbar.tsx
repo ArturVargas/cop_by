@@ -2,6 +2,7 @@
 
 import { HelpCircle } from "lucide-react";
 
+import { OPEN_ONBOARDING_EVENT } from "@/components/onboarding-screen";
 import {
   AddressBadge,
   ConnectButton,
@@ -29,7 +30,7 @@ export function Navbar() {
               COPm
             </p>
             <p className="mt-0.5 text-[11px] leading-none text-[#66736B]">
-              Pesos digitales
+              USD → pesos en MiniPay
             </p>
           </div>
         </div>
@@ -49,6 +50,7 @@ export function Navbar() {
           <button
             type="button"
             aria-label="Ayuda"
+            onClick={() => window.dispatchEvent(new CustomEvent(OPEN_ONBOARDING_EVENT))}
             className="grid h-9 w-9 place-items-center rounded-full border border-[#DDE4DC] bg-white text-[#66736B]"
           >
             <HelpCircle className="h-[18px] w-[18px]" />
