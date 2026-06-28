@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>COP By — Product Roadmap</title>
+  <style>
+    :root {
+      --bg: #F7F8F5;
+      --surface: #ffffff;
+      --border: #DDE4DC;
+      --text: #17211B;
+      --muted: #66736B;
+      --purple: #6D45B8;
+      --purple-light: #F2ECFF;
+      --purple-mid: #A98BE5;
+      --purple-pale: #D9CCF7;
+      --green: #0E7C4F;
+      --green-bg: #E1F1EA;
+      --yellow-bg: #FFF6D8;
+      --blue-bg: #EEF0FA;
+      --radius: 8px;
+      --shadow: 0 1px 3px rgba(23, 33, 27, 0.06);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      font-size: 15px;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 4rem;
+    }
+
+    /* Header */
+    header {
+      margin-bottom: 2.5rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--purple);
+      background: var(--purple-light);
+      border: 1px solid var(--purple-pale);
+      padding: 4px 10px;
+      border-radius: 999px;
+      margin-bottom: 1rem;
+    }
+
+    h1 {
+      font-size: clamp(1.75rem, 4vw, 2.25rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      margin-bottom: 0.75rem;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .meta strong { color: var(--text); }
+
+    /* Sections */
+    section {
+      margin-bottom: 2.5rem;
+    }
+
+    h2 {
+      font-size: 1.35rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      margin-bottom: 1rem;
+      color: var(--text);
+    }
+
+    h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin: 1.25rem 0 0.5rem;
+      color: var(--text);
+    }
+
+    p { margin-bottom: 0.75rem; }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem 1.5rem;
+      box-shadow: var(--shadow);
+      margin-bottom: 1rem;
+    }
+
+    .card.highlight {
+      border-left: 4px solid var(--purple);
+      background: linear-gradient(135deg, #fff 0%, var(--purple-light) 100%);
+    }
+
+    .card.green { border-left: 4px solid var(--green); }
+    .card.quote {
+      font-style: italic;
+      color: var(--muted);
+      border-left: 4px solid var(--purple-mid);
+    }
+
+    .north-star {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    /* Phase blocks */
+    .phase {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 1.5rem;
+      box-shadow: var(--shadow);
+    }
+
+    .phase-header {
+      padding: 1rem 1.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .phase-0 .phase-header { background: var(--green-bg); }
+    .phase-1 .phase-header { background: var(--purple-light); }
+    .phase-2 .phase-header { background: var(--blue-bg); }
+    .phase-3 .phase-header { background: var(--yellow-bg); }
+    .phase-frozen .phase-header { background: #f0f0ee; }
+
+    .phase-num {
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+
+    .phase-title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      flex: 1;
+    }
+
+    .phase-duration {
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .phase-body { padding: 1.25rem 1.5rem; }
+
+    .phase-objective {
+      font-size: 14px;
+      color: var(--muted);
+      margin-bottom: 1rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .phase-objective strong { color: var(--text); }
+
+    /* Tables */
+    .table-wrap {
+      overflow-x: auto;
+      margin: 1rem 0;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      background: var(--surface);
+    }
+
+    th {
+      text-align: left;
+      padding: 10px 12px;
+      background: var(--bg);
+      font-weight: 700;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(247, 248, 245, 0.6); }
+
+    .tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+
+    .tag.done { background: var(--green-bg); color: var(--green); }
+    .tag.high { background: var(--purple-light); color: var(--purple); }
+    .tag.critical { background: #fde8e8; color: #b42318; }
+    .tag.blocked { background: #f0f0ee; color: var(--muted); }
+    .tag.low { background: var(--green-bg); color: var(--green); }
+    .tag.med { background: var(--yellow-bg); color: #92610a; }
+
+    /* Code / pre */
+    pre, code {
+      font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+      font-size: 12px;
+    }
+
+    pre {
+      background: #1e2a22;
+      color: #e8ede9;
+      padding: 1rem 1.25rem;
+      border-radius: var(--radius);
+      overflow-x: auto;
+      line-height: 1.5;
+      margin: 1rem 0;
+    }
+
+    code {
+      background: var(--bg);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      font-size: 12px;
+    }
+
+    /* Lists */
+    ul {
+      padding-left: 1.25rem;
+      margin: 0.5rem 0 1rem;
+    }
+
+    li { margin-bottom: 0.35rem; }
+
+    /* Grid stats */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+      margin: 1rem 0;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.25rem;
+    }
+
+    .stat-card .label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }
+
+    .stat-card .value {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    /* Steps */
+    .steps {
+      list-style: none;
+      padding: 0;
+      counter-reset: step;
+    }
+
+    .steps li {
+      counter-increment: step;
+      display: flex;
+      gap: 1rem;
+      align-items: flex-start;
+      margin-bottom: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+
+    .steps li::before {
+      content: counter(step);
+      flex-shrink: 0;
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      background: var(--purple);
+      color: white;
+      font-size: 13px;
+      font-weight: 700;
+      border-radius: 50%;
+    }
+
+    /* Footer */
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    a { color: var(--purple); }
+    a:hover { text-decoration: none; }
+
+    @media (max-width: 600px) {
+      .container { padding: 1.25rem 1rem 3rem; }
+      th, td { padding: 8px 10px; font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <header>
+      <span class="badge">Product · June 2026</span>
+      <h1>COP By — Product Roadmap</h1>
+      <p class="meta">
+        <strong>Focus:</strong> usability and traction &nbsp;·&nbsp;
+        Revenue secondary for now
+      </p>
+    </header>
+
+    <!-- North Star -->
+    <section>
+      <h2>North Star</h2>
+      <div class="card highlight">
+        <p class="north-star">Make COPm / digital pesos the easiest way to spend from MiniPay for users in Colombia.</p>
+      </div>
+
+      <h3>Primary metric</h3>
+      <p><strong>COP spent or sent per weekly active user</strong> (not just purchased).</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Metric</th><th>Role</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Completed conversion (COPm purchase)</td><td>Activation</td></tr>
+            <tr><td>Completed spend or send (transfer / BRE-B)</td><td>Retention</td></tr>
+            <tr><td>7-day return rate</td><td>Traction</td></tr>
+            <tr><td>Shares / referrals</td><td>Organic growth</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Target user -->
+    <section>
+      <h2>Target user</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Attribute</th><th>Definition</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Who</strong></td><td>MiniPay users in Colombia</td></tr>
+            <tr><td><strong>Input</strong></td><td>They receive USD (USDC, USDT, etc.) in their wallet</td></tr>
+            <tr><td><strong>Need</strong></td><td>Convert and spend in Colombian pesos</td></tr>
+            <tr><td><strong>Profile</strong></td><td>Not crypto-native; wants usable pesos, not a technical workflow</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card quote">
+        "Turn your MiniPay dollars into pesos you can actually use."
+      </div>
+      <p style="color: var(--muted); font-size: 14px;">COPm is the onchain engine; users don't need to understand tokens.</p>
+    </section>
+
+    <!-- Current state -->
+    <section>
+      <h2>Current state</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Capability</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Buy COPm from wallet balances (Squid)</td><td><span class="tag done">Done</span></td></tr>
+            <tr><td>Send COPm to another wallet</td><td><span class="tag done">Done</span></td></tr>
+            <tr><td>Buy COPm and receive it in another wallet</td><td><span class="tag done">Done</span></td></tr>
+            <tr><td>Squid fee visible in UI</td><td><span class="tag done">Done</span></td></tr>
+            <tr><td>Analytics (swaps + transfers)</td><td><span class="tag done">Done</span></td></tr>
+            <tr><td>Onchain logging + Neon</td><td><span class="tag done">Done</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Architecture -->
+    <section>
+      <h2>Payment rails architecture</h2>
+      <p>Two complementary paths, not mutually exclusive:</p>
+      <pre>MiniPay wallet
+    ├─ Buy COPm (Squid)       → pesos in wallet, P2P, Celo ecosystem
+    └─ Pay via BRE-B (Abroad) → pesos in the real world (bank, Nequi, merchant)</pre>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Rail</th><th>Provider</th><th>Use case</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Onchain COPm</td><td>Squid Router</td><td>MiniPay balance, P2P transfers</td></tr>
+            <tr><td>Fiat COP via BRE-B</td><td><a href="https://docs.abroad.finance/" target="_blank" rel="noopener">Abroad</a> (under evaluation)</td><td>Payments to accounts and merchants in Colombia</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Distribution -->
+    <section>
+      <h2>Distribution</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Channel</th><th>Tactic</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>MiniPay</strong></td><td>Short flow (&lt;3 visible taps), amounts in COP, Colombian Spanish copy in the app</td></tr>
+            <tr><td><strong>Colombian communities</strong></td><td>One clear use case per activation ("pay in Colombia from MiniPay")</td></tr>
+            <tr><td><strong>Word of mouth</strong></td><td>Shareable receipt (WhatsApp), referrals, send to family</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card quote">
+        "Get paid in dollars on MiniPay? With COP By you convert them to pesos and send them to any account in Colombia."
+      </div>
+    </section>
+
+    <!-- Phases -->
+    <section>
+      <h2>Roadmap phases</h2>
+
+      <!-- Phase 0 -->
+      <article class="phase phase-0">
+        <div class="phase-header">
+          <span class="phase-num">Phase 0</span>
+          <span class="phase-title">Align product with the user</span>
+          <span class="phase-duration">2–3 weeks</span>
+        </div>
+        <div class="phase-body">
+          <p class="phase-objective">
+            <strong>Overall goal:</strong> First-time visitors understand the value in seconds and have reasons to come back.
+          </p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>#</th><th>Task</th><th>General detail</th><th>Objective</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>0.1</td><td>Reposition copy</td><td>Shift language from "buy COPm" to "convert USD → pesos". COPm only in technical details.</td><td>Reduce cognitive friction for non-crypto users</td></tr>
+                <tr><td>0.2</td><td>Simplify purchase flow</td><td>COP amount as primary input. Token order and fees behind an "Advanced" section.</td><td>Increase flow completion rate</td></tr>
+                <tr><td>0.3</td><td>Activity history</td><td>Unified list of purchases and transfers with status (pending, confirmed, error).</td><td>Retention; app stops feeling single-use</td></tr>
+                <tr><td>0.4</td><td>Improved success screen</td><td>Amount, recipient, explorer link, copy/share receipt button.</td><td>Post-tx confidence and social proof</td></tr>
+                <tr><td>0.5</td><td>Prominent "Send pesos"</td><td>Elevate buy/transfer to third parties as a primary action, not a hidden option.</td><td>Activate remittances / word-of-mouth use case</td></tr>
+                <tr><td>0.6</td><td>Recipients with context</td><td>Names or aliases on top of recent addresses (in addition to current localStorage).</td><td>Repeat transfers with confidence</td></tr>
+                <tr><td>0.7</td><td>Single-screen onboarding</td><td>Explain value in 3 steps before the technical flow.</td><td>Improve activation from MiniPay</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <h3>Success criteria</h3>
+          <ul>
+            <li>Purchase flow completion rate &gt; 70%</li>
+            <li>Users returning within 7 days &gt; 25%</li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- Phase 1 -->
+      <article class="phase phase-1">
+        <div class="phase-header">
+          <span class="phase-num">Phase 1</span>
+          <span class="phase-title">First real spend: BRE-B with Abroad</span>
+          <span class="phase-duration">4–8 weeks</span>
+        </div>
+        <div class="phase-body">
+          <p class="phase-objective">
+            <strong>Overall goal:</strong> Give users a concrete reason to return after converting USD — spend in the real Colombian economy.
+          </p>
+          <p style="font-size: 14px; margin-bottom: 1rem;">
+            <strong>Candidate provider:</strong>
+            <a href="https://docs.abroad.finance/" target="_blank" rel="noopener">Abroad Finance</a>
+            — USDC/USDT → COP fiat via BRE-B.
+          </p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>#</th><th>Task</th><th>General detail</th><th>Objective</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>1.1</td><td>Outreach and API access</td><td>Request API keys, sandbox, and workflow documentation from Abroad sales.</td><td>Unblock integration</td></tr>
+                <tr><td>1.2</td><td>Validate compliance requirements</td><td>Confirm KYC per user vs integrator, limits, minimums, and settlement times.</td><td>Design UX without regulatory surprises</td></tr>
+                <tr><td>1.3</td><td>MVP technical flow</td><td>Backend: quote → payout → webhooks. Frontend: COP amount + BRE-B recipient + confirmation.</td><td>First end-to-end BRE-B payment</td></tr>
+                <tr><td>1.4</td><td>"Spend" tab in UI</td><td>Evolve Buy | Transfer into Buy | Send | Spend.</td><td>Unify conversion + spending in one app</td></tr>
+                <tr><td>1.5</td><td>Persistence and analytics</td><td>Log BRE-B payouts in DB (similar to swaps/transfers).</td><td>Measure adoption and debug failures</td></tr>
+                <tr><td>1.6</td><td>Error handling and states</td><td>Clear states: quoting, processing, completed, failed + messages in Spanish (app UI).</td><td>Trust in fiat payments</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <h3>Target flow</h3>
+          <pre>[How many pesos?] → [To whom? BRE-B key / account] → [Confirm] → [USDC from MiniPay] → [COP via BRE-B]</pre>
+          <h3>Open questions with Abroad (blockers)</h3>
+          <ul>
+            <li>MiniPay wallet integration via JWT (<code>/walletAuth</code>)?</li>
+            <li>KYC per end user or at integrator level?</li>
+            <li>Sandbox available before production?</li>
+            <li>USDC only or USDT as well?</li>
+          </ul>
+          <h3>Success criteria</h3>
+          <ul>
+            <li>&gt; 15% of active users complete at least one BRE-B spend</li>
+            <li>&gt; 1.2 spend transactions per weekly active user</li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- Phase 2 -->
+      <article class="phase phase-2">
+        <div class="phase-header">
+          <span class="phase-num">Phase 2</span>
+          <span class="phase-title">Traction loops</span>
+          <span class="phase-duration">6–8 weeks</span>
+        </div>
+        <div class="phase-body">
+          <p class="phase-objective">
+            <strong>Overall goal:</strong> Organic growth through MiniPay, Colombian communities, and WhatsApp.
+          </p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>#</th><th>Task</th><th>General detail</th><th>Objective</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>2.1</td><td>Hero "Send pesos to Colombia"</td><td>Landing / first screen focused on remittances and family payments.</td><td>Virality in communities</td></tr>
+                <tr><td>2.2</td><td>Shareable receipt</td><td>Image or post-tx link optimized for WhatsApp.</td><td>Word of mouth with social proof</td></tr>
+                <tr><td>2.3</td><td>Offchain cashback</td><td>COPm bonus in DB (e.g. first BRE-B payment or first purchase). No onchain contracts.</td><td>First-repeat incentive</td></tr>
+                <tr><td>2.4</td><td>Simple referrals</td><td>Code or link; both parties get a benefit on the next transaction (offchain).</td><td>Measure and scale growth</td></tr>
+                <tr><td>2.5</td><td>Community content</td><td>Short video (~30 s) + copy for Telegram/WhatsApp groups.</td><td>Activation in CO channels</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <h3>Success criteria</h3>
+          <ul>
+            <li>&gt; 10% of purchases/sends to third parties</li>
+            <li>Activated referrals baseline measured and growing</li>
+          </ul>
+        </div>
+      </article>
+
+      <!-- Phase 3 -->
+      <article class="phase phase-3">
+        <div class="phase-header">
+          <span class="phase-num">Phase 3</span>
+          <span class="phase-title">Second spending vertical</span>
+          <span class="phase-duration">When Phase 1 has data</span>
+        </div>
+        <div class="phase-body">
+          <p class="phase-objective">
+            <strong>Overall goal:</strong> Expand spending use cases only if demand is validated.
+          </p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Vertical</th><th>Provider</th><th>When to pursue</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Phone top-ups</td><td>TBD (Bemovil, Reloadly, etc.)</td><td>When API exists and Phase 1 &gt; 15% adoption</td></tr>
+                <tr><td>Gift cards (Netflix, etc.)</td><td>TBD</td><td>After choosing a CO catalog</td></tr>
+                <tr><td>Vouchers (Rappi, Uber, Didi)</td><td>TBD</td><td>If there is a partner or clear margin</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="font-size: 14px; color: var(--muted); margin-top: 0.75rem;">
+            <strong>Rule:</strong> do not open a new vertical until the previous one exceeds ~15% of active users.
+          </p>
+        </div>
+      </article>
+
+      <!-- Frozen -->
+      <article class="phase phase-frozen">
+        <div class="phase-header">
+          <span class="phase-num">Frozen</span>
+          <span class="phase-title">Do not build until there is real pressure</span>
+        </div>
+        <div class="phase-body">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Item</th><th>Criteria to unlock</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><strong>Swap &amp; stake COPm</strong></td><td>Yield partner + clear legal model</td></tr>
+                <tr><td><strong>Multi-approve / Permit2 onchain</strong></td><td>&gt; 30% drop-off on "Activate" step in production</td></tr>
+                <tr><td><strong>Onchain cashback</strong></td><td>Audit, grant (Talent), or regulatory requirement</td></tr>
+                <tr><td><strong>4 payment verticals in parallel</strong></td><td>Discarded — one vertical at a time</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <!-- Backlog -->
+    <section>
+      <h2>Prioritized backlog</h2>
+      <p style="color: var(--muted); font-size: 14px; margin-bottom: 1rem;">Next 6–8 weeks</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Priority</th><th>Task</th><th>Effort</th><th>Traction impact</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>1</td><td>Reposition copy (USD → pesos)</td><td><span class="tag low">Low</span></td><td><span class="tag high">High</span></td></tr>
+            <tr><td>2</td><td>Transaction history</td><td><span class="tag med">Medium</span></td><td><span class="tag high">High</span></td></tr>
+            <tr><td>3</td><td>Shareable post-tx receipt</td><td><span class="tag low">Low</span></td><td><span class="tag high">High</span></td></tr>
+            <tr><td>4</td><td>"Send pesos" as primary action</td><td><span class="tag low">Low</span></td><td><span class="tag high">High</span></td></tr>
+            <tr><td>5</td><td>Contact Abroad → sandbox</td><td><span class="tag med">Ops</span></td><td><span class="tag critical">Critical</span></td></tr>
+            <tr><td>6</td><td>BRE-B MVP (quote + payout + webhook)</td><td><span class="tag high">High</span></td><td><span class="tag critical">Very high</span></td></tr>
+            <tr><td>7</td><td>Offchain referrals</td><td><span class="tag med">Medium</span></td><td><span class="tag med">Medium</span></td></tr>
+            <tr><td>8</td><td>Phone top-ups</td><td>—</td><td><span class="tag blocked">Blocked</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Journey -->
+    <section>
+      <h2>User journey</h2>
+      <pre>Arrives (MiniPay / community)
+        │
+        ▼
+   What do I need?
+    ┌───┼───┐
+    ▼   ▼   ▼
+ Convert  Send  Pay in Colombia
+    │       │           │
+    ▼       ▼           ▼
+ COPm     Transfer    BRE-B
+(Squid)   or BRE-B   (Abroad)
+    │       │           │
+    └───────┴───────────┘
+              │
+              ▼
+    Shareable receipt
+              │
+              ▼
+       Returns in 7 days</pre>
+    </section>
+
+    <!-- Decisions -->
+    <section>
+      <h2>Product decisions</h2>
+      <div class="grid-2">
+        <div class="stat-card">
+          <div class="label">Primary user</div>
+          <div class="value">MiniPay CO user who receives USD and wants to spend in COP</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Revenue</div>
+          <div class="value">Traction only for now; existing Squid fee</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">First spending vertical</div>
+          <div class="value">BRE-B via Abroad (not top-ups — no provider yet)</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Cashback</div>
+          <div class="value">Offchain first; onchain only if required</div>
+        </div>
+        <div class="stat-card" style="grid-column: 1 / -1;">
+          <div class="label">Distribution</div>
+          <div class="value">MiniPay + Colombian communities + word of mouth</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Next steps -->
+    <section>
+      <h2>Immediate next steps</h2>
+      <ol class="steps">
+        <li>Execute <strong>Phase 0</strong> (copy, history, receipt, prominent send pesos).</li>
+        <li>In parallel: <strong>contact Abroad</strong> for API keys and sandbox.</li>
+        <li>With API access: design <strong>BRE-B MVP</strong> (Phase 1) before seeking top-up providers.</li>
+      </ol>
+    </section>
+
+    <footer>
+      COP By · Product Roadmap · June 2026
+    </footer>
+
+  </div>
+</body>
+</html>
