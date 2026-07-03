@@ -2530,7 +2530,6 @@ function SwapSuccessModal({
   const [imageFeedback, setImageFeedback] = useState<string | null>(null);
   const isTransfer = result.variant === "transfer";
   const receiptText = buildReceiptText(result);
-  const formattedAmount = formatPesoAmountFromString(result.receivedCopm);
   const shareableReceipt = toShareableReceiptData(result);
 
   const copyReceipt = async () => {
@@ -2592,7 +2591,7 @@ function SwapSuccessModal({
           {result.amountLabel ?? (isTransfer ? "Enviaste" : "Recibiste")}
         </p>
         <p className="mt-1 text-3xl font-semibold text-[#0E7C4F]">
-          {formattedAmount} pesos
+          {result.receivedCopm} pesos
         </p>
         <p className="mt-1 text-xs text-[#66736B]">Equivalente en COPm onchain</p>
         {result.shortfallMessage && (
