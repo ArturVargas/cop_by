@@ -1,7 +1,8 @@
 # COP By — Roadmap de producto
 
 > **Última actualización:** junio 2026  
-> **Enfoque:** usabilidad y tracción (revenue secundario por ahora)
+> **Enfoque:** usabilidad y tracción (revenue secundario por ahora)  
+> **Fase 0:** ✅ completada (jun 2026) — QA MiniPay aprobado, merge en `main` + fix Squid `prefer` Uniswap V3
 
 ---
 
@@ -49,6 +50,11 @@ COPm es el motor onchain; el usuario no tiene que entender tokens.
 | Fee Squid visible en UI | ✅ |
 | Analytics (swaps + transfers) | ✅ |
 | Logging onchain + Neon | ✅ |
+| **Fase 0 — copy pesos-first, onboarding, flujo simplificado** | ✅ |
+| **Historial `/activity` (swaps + transfers)** | ✅ |
+| **Comprobante compartible (imagen + texto)** | ✅ |
+| **Destinatarios guardados (alias, máx. 5, eliminar)** | ✅ |
+| **Squid `prefer` Uniswap V3** (fallback si no hay ruta) | ✅ |
 
 ---
 
@@ -85,25 +91,27 @@ MiniPay wallet
 
 ## Fases del roadmap
 
-### Fase 0 — Alinear producto con el usuario
+### Fase 0 — Alinear producto con el usuario ✅ Completada
 
-**Duración estimada:** 2–3 semanas  
+**Duración:** jun 2026  
 **Objetivo general:** Que quien llegue una vez entienda el valor en segundos y tenga razones para volver.
 
-| # | Tarea | Detalle general | Objetivo |
-| --- | --- | --- | --- |
-| 0.1 | Reposicionar copy | Cambiar lenguaje de "compra COPm" a "convierte USD → pesos". COPm solo en detalles técnicos. | Reducir fricción cognitiva para no-crypto |
-| 0.2 | Simplificar flujo de compra | Monto en COP como input principal. Orden de tokens y fees detrás de sección "Avanzado". | Subir tasa de completación del flujo |
-| 0.3 | Historial de actividad | Lista unificada de compras y transferencias con estado (pendiente, confirmado, error). | Retención; la app deja de sentirse de un solo uso |
-| 0.4 | Pantalla de éxito mejorada | Monto, destinatario, link a explorer, botón copiar/compartir comprobante. | Confianza post-tx y prueba social |
-| 0.5 | "Enviar pesos" prominente | Elevar compra/transferencia a terceros como acción principal, no opción escondida. | Activar caso de uso remesas / boca a boca |
-| 0.6 | Destinatarios con contexto | Nombres o alias sobre addresses recientes (además de `localStorage` actual). | Repetición de transferencias con confianza |
-| 0.7 | Onboarding de 1 pantalla | Explicar valor en 3 pasos antes del flujo técnico. | Mejorar activación desde MiniPay |
+| # | Tarea | Estado |
+| --- | --- | --- |
+| 0.1 | Reposicionar copy | ✅ |
+| 0.2 | Simplificar flujo de compra | ✅ |
+| 0.3 | Historial de actividad | ✅ |
+| 0.4 | Pantalla de éxito mejorada | ✅ (+ imagen compartible) |
+| 0.5 | "Enviar pesos" prominente | ✅ |
+| 0.6 | Destinatarios con contexto | ✅ (guardado explícito, máx. 5) |
+| 0.7 | Onboarding de 1 pantalla | ✅ |
 
-**Criterio de éxito Fase 0**
+**Criterio de éxito Fase 0** (medir post-deploy)
 
 - Tasa de completación del flujo de compra &gt; 70%
 - Usuarios que vuelven en 7 días &gt; 25%
+
+**Extra post-Fase 0:** fix de routing Squid con `prefer: ["Uniswap V3"]` para evitar fallos de liquidez cuando Mento cierra mercado FX (vier–dom).
 
 ---
 
@@ -129,12 +137,29 @@ MiniPay wallet
 [¿Cuántos pesos?] → [¿A quién? llave BRE-B / cuenta] → [Confirmar] → [USDC desde MiniPay] → [COP vía BRE-B]
 ```
 
-**Preguntas abiertas con Abroad (bloqueantes)**
+**Preguntas abiertas con Abroad (bloqueantes para go-live)**
 
 - ¿Integración con wallet MiniPay vía JWT (`/walletAuth`)?
 - ¿KYC por usuario final o a nivel integrador?
 - ¿Sandbox disponible antes de producción?
 - ¿Solo USDC o también USDT?
+
+#### Avance sin API key (en curso / preparación)
+
+Tareas que no requieren credenciales de Abroad y desbloquean el MVP cuando llegue la key:
+
+| # | Tarea | Detalle | Esfuerzo |
+| --- | --- | --- | --- |
+| 1.2a | Spec de compliance (desk research) | Documentar desde [docs Abroad](https://docs.abroad.finance/) flujos KYC/KYB, límites y webhooks; lista de preguntas abiertas para sales. | Bajo |
+| 1.3a | Modelo de datos BRE-B | Tabla `breb_payouts` en Neon (quote, destinatario, estado, tx onchain, webhook ids) — espejo de swaps/transfers. | Medio |
+| 1.3b | Capa `lib/abroad-client.ts` | Tipos TypeScript + cliente HTTP con mock adapter (`ABROAD_MOCK=true`) para desarrollo local. | Medio |
+| 1.3c | Endpoints stub | `POST /api/breb/quote`, `POST /api/breb/payout`, `POST /api/breb/webhook` — validación de input, estados, sin llamada real. | Medio |
+| 1.4a | Tab **Gastar** + UI shell | Tercer tab `Obtener \| Enviar \| Gastar`; formulario monto + llave BRE-B + confirmación con estados mock. | Medio |
+| 1.5a | Actividad unificada | Incluir payouts BRE-B en `/activity` cuando exista la tabla. | Bajo |
+| 1.6a | Copy de errores fiat | Mensajes en español para cotización fallida, KYC pendiente, payout rechazado (reutilizar patrón swap/transfer). | Bajo |
+| — | Mensaje mercado Mento cerrado | Si Squid falla fin de semana tras `prefer`, aviso UX “mercado de pesos cerrado” (complemento al fix Uniswap). | Bajo |
+
+**Bloqueado hasta API key:** quote real, payout real, webhooks firmados, KYC embebido, go-live BRE-B.
 
 **Criterio de éxito Fase 1**
 
@@ -189,17 +214,17 @@ MiniPay wallet
 
 ---
 
-## Backlog priorizado (próximos 6–8 semanas)
+## Backlog priorizado (próximas 4–8 semanas)
 
 | Prioridad | Tarea | Esfuerzo | Impacto tracción |
 | --- | --- | --- | --- |
-| 1 | Reposicionar copy (USD → pesos) | Bajo | Alto |
-| 2 | Historial de transacciones | Medio | Alto |
-| 3 | Comprobante compartible post-tx | Bajo | Alto |
-| 4 | "Enviar pesos" como acción principal | Bajo | Alto |
-| 5 | Contactar Abroad → sandbox | Ops | Crítico |
-| 6 | MVP BRE-B (quote + payout + webhook) | Alto | Muy alto |
-| 7 | Referidos offchain | Medio | Medio |
+| 1 | Contactar Abroad → sandbox + API key | Ops | Crítico |
+| 2 | Spec + schema BRE-B (1.2a, 1.3a) | Bajo–Medio | Alto |
+| 3 | Tab Gastar + UI shell con mock (1.4a) | Medio | Alto |
+| 4 | Cliente Abroad + endpoints stub (1.3b–c) | Medio | Alto |
+| 5 | Medir métricas Fase 0 en producción | Bajo | Alto |
+| 6 | MVP BRE-B end-to-end (con API key) | Alto | Muy alto |
+| 7 | Referidos offchain (Fase 2) | Medio | Medio |
 | 8 | Recargas telefónicas | — | Bloqueado (sin proveedor) |
 
 ---
@@ -244,6 +269,8 @@ Llega (MiniPay / comunidad)
 
 ## Próximos pasos inmediatos
 
-1. Ejecutar **Fase 0** (copy, historial, comprobante, enviar pesos prominente).
-2. En paralelo: **contactar Abroad** para API keys y sandbox.
-3. Con acceso API: diseñar **MVP BRE-B** (Fase 1) antes de buscar proveedores de recargas.
+1. ~~Ejecutar **Fase 0**~~ ✅ Completada y en producción.
+2. **Seguir contacto Abroad** para API keys y sandbox (1.1).
+3. **En paralelo (sin API key):** spec compliance, schema DB, tab Gastar con mock, stubs de API.
+4. **Con API key:** conectar quote → payout → webhooks y cerrar MVP BRE-B (1.3).
+5. **Medir** completación de compra y retorno 7d post-Fase 0.
