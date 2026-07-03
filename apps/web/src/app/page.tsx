@@ -136,9 +136,13 @@ function createIntentId() {
   return crypto.randomUUID();
 }
 
-function getFriendlyErrorMessage(error: unknown) {
+function getFriendlyErrorMessage(error: unknown, context: "swap" | "transfer" = "swap") {
   const message = error instanceof Error ? error.message : String(error);
   const lowerMessage = message.toLowerCase();
+  const fallback =
+    context === "transfer"
+      ? "No pudimos realizar la transferencia. Revisa la confirmacion en tu wallet e intenta de nuevo."
+      : "No pudimos completar la compra. Revisa la confirmacion en tu wallet e intenta de nuevo.";
 
   if (
     lowerMessage.includes("user rejected") ||
@@ -174,10 +178,10 @@ function getFriendlyErrorMessage(error: unknown) {
   }
 
   if (message.length > 180 || lowerMessage.includes("request arguments")) {
-    return "No pudimos completar la compra. Revisa la confirmacion en tu wallet e intenta de nuevo.";
+    return fallback;
   }
 
-  return message || "No pudimos completar la compra. Intenta de nuevo.";
+  return message || fallback;
 }
 
 function formatAddressPreview(address: string) {
@@ -1260,7 +1264,7 @@ export default function Home() {
       await refreshCopmBalance();
     } catch (error) {
       setTransferStatus("error");
-      setTransferError(getFriendlyErrorMessage(error));
+      setTransferError(getFriendlyErrorMessage(error, "transfer"));
     }
   };
 
