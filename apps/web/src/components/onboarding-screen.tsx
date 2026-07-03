@@ -37,7 +37,7 @@ export function OnboardingScreen({ onStart }: { onStart: () => void }) {
           Convierte tus dólares en pesos
         </h1>
         <p className="mt-2 text-sm leading-5 text-[#66736B]">
-          Envía pesos a cualquier wallet en Colombia desde MiniPay.
+          Envía pesos a cualquier wallet desde MiniPay.
         </p>
         <ul className="mt-6 space-y-3">
           {bullets.map((bullet) => (

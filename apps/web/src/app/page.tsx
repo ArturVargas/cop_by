@@ -66,7 +66,8 @@ import {
   formatPesoAmountFromBigInt,
   formatPesoAmountFromString,
 } from "@/lib/format-peso";
-import { createReceiptImageBlob, shareReceiptImage } from "@/lib/receipt-share";
+import { createReceiptImageBlob, createReceiptPdfBlob, shareReceiptFile, shouldUseReceiptPdf } from "@/lib/receipt-share";
+import { useWalletAdapter } from "@/hooks/use-wallet-adapter";
 import {
   ShareableReceipt,
   type ShareableReceiptData,
@@ -2470,38 +2471,6 @@ function TransferCopmScreen({
   );
 }
 
-function buildReceiptText(result: SwapResult) {
-  const date = result.completedAt
-    ? new Intl.DateTimeFormat("es-CO", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(new Date(result.completedAt))
-    : "";
-  const isTransfer = result.variant === "transfer";
-  const title = result.title ?? (isTransfer ? "Envío completado" : "Conversión completada");
-  const formattedAmount = formatPesoAmountFromString(result.receivedCopm);
-  const amountLine = isTransfer
-    ? `Enviaste: ${formattedAmount} pesos`
-    : `Recibiste: ${formattedAmount} pesos`;
-  const destination = result.recipientAddress
-    ? result.recipientAlias
-      ? `${result.recipientAlias} (${result.recipientAddress})`
-      : result.recipientAddress
-    : "Mi wallet";
-
-  return [
-    `✅ ${title} — COP By`,
-    "",
-    amountLine,
-    isTransfer ? `A: ${destination}` : `Destino: ${destination}`,
-    date ? `Fecha: ${date}` : "",
-    "",
-    result.txUrl ? `Ver transacción: ${result.txUrl}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
 function toShareableReceiptData(result: SwapResult): ShareableReceiptData {
   return {
     amountLabel: result.amountLabel ?? (result.variant === "transfer" ? "Enviaste" : "Recibiste"),
@@ -2523,19 +2492,32 @@ function SwapSuccessModal({
   result: SwapResult;
   onClose: () => void;
 }) {
+  const { isMiniPay } = useWalletAdapter();
   const receiptRef = useRef<HTMLDivElement>(null);
-  const [copied, setCopied] = useState(false);
+  const [txIdCopied, setTxIdCopied] = useState(false);
   const [addressCopied, setAddressCopied] = useState(false);
-  const [sharingImage, setSharingImage] = useState(false);
-  const [imageFeedback, setImageFeedback] = useState<string | null>(null);
+  const [sharingReceipt, setSharingReceipt] = useState(false);
+  const [receiptFeedback, setReceiptFeedback] = useState<string | null>(null);
+  const useReceiptPdf = shouldUseReceiptPdf(isMiniPay);
   const isTransfer = result.variant === "transfer";
-  const receiptText = buildReceiptText(result);
   const shareableReceipt = toShareableReceiptData(result);
 
-  const copyReceipt = async () => {
-    await navigator.clipboard?.writeText(receiptText);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1500);
+  const shareTransactionId = async () => {
+    const text = result.txUrl || result.txHash;
+    if (!text) return;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({ text: `Transacción COP By: ${text}` });
+        return;
+      }
+    } catch {
+      // fall through to clipboard
+    }
+
+    await navigator.clipboard?.writeText(text);
+    setTxIdCopied(true);
+    window.setTimeout(() => setTxIdCopied(false), 1500);
   };
 
   const copyAddress = async () => {
@@ -2545,22 +2527,30 @@ function SwapSuccessModal({
     window.setTimeout(() => setAddressCopied(false), 1500);
   };
 
-  const shareReceiptAsImage = async () => {
-    if (!receiptRef.current) return;
-
-    setSharingImage(true);
-    setImageFeedback(null);
+  const sendReceipt = async () => {
+    setSharingReceipt(true);
+    setReceiptFeedback(null);
 
     try {
-      const blob = await createReceiptImageBlob(receiptRef.current);
-      const outcome = await shareReceiptImage(blob);
-      setImageFeedback(outcome === "shared" ? "Imagen compartida" : "Imagen descargada");
-      window.setTimeout(() => setImageFeedback(null), 1800);
+      const blob = useReceiptPdf
+        ? await createReceiptPdfBlob(shareableReceipt, result.txUrl)
+        : await (async () => {
+            if (!receiptRef.current) {
+              throw new Error("Receipt element unavailable");
+            }
+            return createReceiptImageBlob(receiptRef.current);
+          })();
+
+      const outcome = await shareReceiptFile(blob, useReceiptPdf ? "pdf" : "png");
+      setReceiptFeedback(
+        outcome === "shared" ? "Comprobante enviado" : "Comprobante descargado"
+      );
+      window.setTimeout(() => setReceiptFeedback(null), 1800);
     } catch {
-      setImageFeedback("No pudimos generar la imagen");
-      window.setTimeout(() => setImageFeedback(null), 1800);
+      setReceiptFeedback("No pudimos generar el comprobante");
+      window.setTimeout(() => setReceiptFeedback(null), 1800);
     } finally {
-      setSharingImage(false);
+      setSharingReceipt(false);
     }
   };
 
@@ -2650,22 +2640,22 @@ function SwapSuccessModal({
         <div className="mt-4 grid grid-cols-2 gap-2">
           <Button
             className="col-span-2 h-11 rounded-[8px] bg-[#6D45B8] text-white hover:bg-[#56359A]"
-            disabled={sharingImage}
-            onClick={() => void shareReceiptAsImage()}
+            disabled={sharingReceipt}
+            onClick={() => void sendReceipt()}
           >
-            {sharingImage ? "Generando imagen..." : "Compartir imagen"}
+            {sharingReceipt ? "Generando comprobante..." : "Enviar comprobante"}
           </Button>
           <Button
             variant="outline"
             className="col-span-2 h-11 rounded-[8px] border-[#DDE4DC]"
-            onClick={() => void copyReceipt()}
+            onClick={() => void shareTransactionId()}
           >
-            {copied ? "Copiado" : "Copiar texto"}
+            {txIdCopied ? "Copiado" : "Comparte id de la transacción"}
           </Button>
         </div>
-        {imageFeedback && (
+        {receiptFeedback && (
           <p className="mt-2 text-center text-xs font-semibold text-[#0E7C4F]">
-            {imageFeedback}
+            {receiptFeedback}
           </p>
         )}
 

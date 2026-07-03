@@ -10,7 +10,7 @@ export function truncateToDecimals(value: number, maxDecimals = MAX_PESO_DECIMAL
 
 export function formatPesoAmount(value: number, maxDecimals = MAX_PESO_DECIMALS) {
   const truncated = truncateToDecimals(value, maxDecimals);
-  return new Intl.NumberFormat("es-CO", {
+  return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: maxDecimals,
     minimumFractionDigits: 0,
   }).format(truncated);
