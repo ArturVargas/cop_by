@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
+  HTMLAttributes,
   PointerEvent as ReactPointerEvent,
+  ReactNode,
   TouchEvent as ReactTouchEvent,
 } from "react";
 import {
@@ -95,7 +97,7 @@ const SQUID_CELO_APPROVAL_TARGET =
 
 type SwapStatus = "idle" | "quoting" | "buying" | "complete" | "error";
 type SwapProgress = "idle" | "quoting" | "confirming" | "processing";
-type ActionMode = "buy" | "transfer";
+type ActionMode = "buy" | "transfer" | "spend";
 type SwapResult = {
   amountLabel?: string;
   completedAt?: string;
@@ -553,7 +555,7 @@ export default function Home() {
     setShowOnboarding(!hasSeenOnboarding());
 
     const savedMode = window.sessionStorage.getItem(ACTION_MODE_STORAGE_KEY);
-    if (savedMode === "buy" || savedMode === "transfer") {
+    if (savedMode === "buy" || savedMode === "transfer" || savedMode === "spend") {
       setActionMode(savedMode);
     }
 
@@ -1298,7 +1300,9 @@ export default function Home() {
           </div>
         )}
 
-        {actionMode === "transfer" ? (
+        {actionMode === "spend" ? (
+          <SpendScreen />
+        ) : actionMode === "transfer" ? (
           <TransferCopmScreen
             amount={transferAmount}
             balance={copmBalance}
@@ -1862,8 +1866,8 @@ function ActionModeTabs({
   onChange: (mode: ActionMode) => void;
 }) {
   return (
-    <div className="mb-3 grid grid-cols-2 gap-2 rounded-[8px] bg-white p-1">
-      {(["buy", "transfer"] as const).map((item) => (
+    <div className="mb-3 grid grid-cols-3 gap-2 rounded-[8px] bg-white p-1">
+      {(["buy", "transfer", "spend"] as const).map((item) => (
         <button
           key={item}
           type="button"
@@ -1874,8 +1878,381 @@ function ActionModeTabs({
               : "bg-[#F7F8F5] text-[#66736B]"
           }`}
         >
-          {item === "buy" ? "Obtener pesos" : "Enviar pesos"}
+          {item === "buy"
+            ? "Obtener"
+            : item === "transfer"
+              ? "Enviar"
+              : "Gastar"}
         </button>
+      ))}
+    </div>
+  );
+}
+
+const topUpOperators = ["Claro", "Tigo"] as const;
+const topUpPackages = ["5.000", "10.000", "20.000", "30.000"] as const;
+const giftcardCategories = [
+  {
+    name: "Entretenimiento",
+    brands: [
+      "Netflix",
+      "Spotify",
+      "Prime Video",
+      "DirecTV Go",
+      "OnlyFans",
+      "Disney+",
+      "Tuboleta",
+      "Betplay",
+    ],
+  },
+  {
+    name: "Tiendas físicas",
+    brands: [
+      "D1",
+      "Ara",
+      "Éxito",
+      "Alkosto",
+      "Jumbo",
+      "Farmatodo",
+      "Surtimayorista",
+      "Ktronix",
+    ],
+  },
+] as const;
+const giftcardAmounts = ["20.000", "50.000", "100.000"] as const;
+
+function SpendScreen() {
+  const [flow, setFlow] = useState<"home" | "topup" | "giftcard" | "done">("home");
+  const [topUpStep, setTopUpStep] = useState(0);
+  const [giftStep, setGiftStep] = useState(0);
+  const [operator, setOperator] = useState("");
+  const [topUpAmount, setTopUpAmount] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [category, setCategory] = useState<(typeof giftcardCategories)[number] | null>(null);
+  const [brand, setBrand] = useState("");
+  const [giftAmount, setGiftAmount] = useState("");
+  const selectedTitle = brand || operator;
+  const selectedAmount = giftAmount || topUpAmount;
+
+  const reset = () => {
+    setFlow("home");
+    setTopUpStep(0);
+    setGiftStep(0);
+  };
+
+  if (flow === "done") {
+    return (
+      <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
+        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#E6F4EE] text-[#0E7C4F]">
+          <Check className="h-5 w-5" />
+        </div>
+        <h2 className="text-xl font-semibold">Compra en proceso</h2>
+        <p className="mt-2 text-sm text-[#66736B]">
+          Te avisaremos cuando esté lista.
+        </p>
+        <div className="mt-4 rounded-[8px] bg-[#F7F8F5] p-3 text-sm">
+          <p className="text-xs text-[#66736B]">Producto</p>
+          <p className="font-semibold">
+            {selectedTitle} · ${selectedAmount} pesos
+          </p>
+          {email && (
+            <>
+              <p className="mt-3 text-xs text-[#66736B]">Entrega</p>
+              <p className="font-semibold">{email}</p>
+            </>
+          )}
+        </div>
+        <Button
+          className="mt-4 h-12 w-full rounded-[8px] bg-[#6D45B8] text-white hover:bg-[#56359A]"
+          onClick={reset}
+        >
+          Listo
+        </Button>
+      </div>
+    );
+  }
+
+  if (flow === "topup") {
+    return (
+      <div className="space-y-3">
+        <button
+          type="button"
+          onClick={() => (topUpStep === 0 ? reset() : setTopUpStep(topUpStep - 1))}
+          className="text-sm font-semibold text-[#66736B]"
+        >
+          ← Atrás
+        </button>
+        {topUpStep === 0 && (
+          <SpendPanel title="Selecciona operador">
+            <div className="grid grid-cols-2 gap-2">
+              {topUpOperators.map((item) => (
+                <SpendChoice
+                  key={item}
+                  active={operator === item}
+                  label={item}
+                  onClick={() => {
+                    setOperator(item);
+                    setTopUpStep(1);
+                  }}
+                />
+              ))}
+            </div>
+          </SpendPanel>
+        )}
+        {topUpStep === 1 && (
+          <SpendPanel title="Elige tu paquete">
+            <div className="space-y-2">
+              {topUpPackages.map((item) => (
+                <SpendChoice
+                  key={item}
+                  active={topUpAmount === item}
+                  label={`$${item}`}
+                  onClick={() => {
+                    setTopUpAmount(item);
+                    setTopUpStep(2);
+                  }}
+                />
+              ))}
+            </div>
+          </SpendPanel>
+        )}
+        {topUpStep === 2 && (
+          <SpendPanel title="Datos de la recarga">
+            <SpendInput
+              label="Número que recibirá la recarga"
+              value={phone}
+              onChange={setPhone}
+              inputMode="tel"
+              placeholder="3001234567"
+            />
+            <SpendInput
+              label="Email para recibo"
+              value={email}
+              onChange={setEmail}
+              inputMode="email"
+              placeholder="user@mail.com"
+            />
+            <SpendSummary
+              lines={[operator, `$${topUpAmount} pesos`, phone]}
+            />
+            <Button
+              className="h-12 w-full rounded-[8px] bg-[#6D45B8] text-white hover:bg-[#56359A] disabled:bg-[#C8B9E8]"
+              disabled={!phone || !email}
+              onClick={() => setFlow("done")}
+            >
+              Pagar con pesos
+            </Button>
+          </SpendPanel>
+        )}
+      </div>
+    );
+  }
+
+  if (flow === "giftcard") {
+    return (
+      <div className="space-y-3">
+        <button
+          type="button"
+          onClick={() => (giftStep === 0 ? reset() : setGiftStep(giftStep - 1))}
+          className="text-sm font-semibold text-[#66736B]"
+        >
+          ← Atrás
+        </button>
+        {giftStep === 0 && (
+          <SpendPanel title="¿Qué giftcard quieres comprar?">
+            <div className="space-y-2">
+              {giftcardCategories.map((item) => (
+                <button
+                  key={item.name}
+                  type="button"
+                  onClick={() => {
+                    setCategory(item);
+                    setGiftStep(1);
+                  }}
+                  className="flex w-full items-center justify-between rounded-[8px] border border-[#DDE4DC] bg-white p-3 text-left"
+                >
+                  <span>
+                    <span className="block font-semibold">{item.name}</span>
+                    <span className="mt-1 block text-xs text-[#66736B]">
+                      {item.brands.slice(0, 4).join(", ")}...
+                    </span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 text-[#66736B]" />
+                </button>
+              ))}
+            </div>
+          </SpendPanel>
+        )}
+        {giftStep === 1 && category && (
+          <SpendPanel title="Elige una marca">
+            <div className="grid grid-cols-2 gap-2">
+              {category.brands.map((item) => (
+                <SpendChoice
+                  key={item}
+                  active={brand === item}
+                  label={item}
+                  onClick={() => {
+                    setBrand(item);
+                    setGiftStep(2);
+                  }}
+                />
+              ))}
+            </div>
+          </SpendPanel>
+        )}
+        {giftStep === 2 && (
+          <SpendPanel title="Elige el monto">
+            <div className="space-y-2">
+              {giftcardAmounts.map((item) => (
+                <SpendChoice
+                  key={item}
+                  active={giftAmount === item}
+                  label={`$${item}`}
+                  onClick={() => {
+                    setGiftAmount(item);
+                    setGiftStep(3);
+                  }}
+                />
+              ))}
+            </div>
+          </SpendPanel>
+        )}
+        {giftStep === 3 && (
+          <SpendPanel title="Datos de entrega">
+            <SpendInput
+              label="Email para recibir el código"
+              value={email}
+              onChange={setEmail}
+              inputMode="email"
+              placeholder="user@mail.com"
+            />
+            <SpendSummary lines={[brand, `$${giftAmount} pesos`, email]} />
+            <Button
+              className="h-12 w-full rounded-[8px] bg-[#6D45B8] text-white hover:bg-[#56359A] disabled:bg-[#C8B9E8]"
+              disabled={!email}
+              onClick={() => setFlow("done")}
+            >
+              Pagar con pesos
+            </Button>
+          </SpendPanel>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <SpendPanel title="¿Qué quieres pagar?">
+        <button
+          type="button"
+          onClick={() => setFlow("topup")}
+          className="mb-2 flex w-full items-center justify-between rounded-[8px] border border-[#DDE4DC] bg-white p-3 text-left"
+        >
+          <span>
+            <span className="block font-semibold">Recargas</span>
+            <span className="mt-1 block text-xs text-[#66736B]">
+              Claro y Tigo en Colombia
+            </span>
+          </span>
+          <ChevronRight className="h-4 w-4 text-[#66736B]" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setFlow("giftcard")}
+          className="flex w-full items-center justify-between rounded-[8px] border border-[#DDE4DC] bg-white p-3 text-left"
+        >
+          <span>
+            <span className="block font-semibold">Giftcards</span>
+            <span className="mt-1 block text-xs text-[#66736B]">
+              Entretenimiento y tiendas
+            </span>
+          </span>
+          <ChevronRight className="h-4 w-4 text-[#66736B]" />
+        </button>
+      </SpendPanel>
+    </div>
+  );
+}
+
+function SpendPanel({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
+      <h2 className="mb-3 text-xl font-semibold leading-tight">{title}</h2>
+      {children}
+    </div>
+  );
+}
+
+function SpendChoice({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`min-h-12 rounded-[8px] border p-3 text-left text-sm font-semibold ${
+        active
+          ? "border-[#6D45B8] bg-[#F2ECFF] text-[#6D45B8]"
+          : "border-[#DDE4DC] bg-white text-[#17211B]"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function SpendInput({
+  inputMode,
+  label,
+  onChange,
+  placeholder,
+  value,
+}: {
+  inputMode: HTMLAttributes<HTMLInputElement>["inputMode"];
+  label: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  value: string;
+}) {
+  return (
+    <label className="mb-3 block">
+      <span className="mb-1 block text-sm font-semibold text-[#17211B]">
+        {label}
+      </span>
+      <input
+        inputMode={inputMode}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="h-12 w-full rounded-[8px] border border-[#DDE4DC] bg-[#F7F8F5] px-3 text-base outline-none ring-[#6D45B8] focus:ring-2"
+      />
+    </label>
+  );
+}
+
+function SpendSummary({ lines }: { lines: string[] }) {
+  return (
+    <div className="mb-3 rounded-[8px] bg-[#F7F8F5] p-3 text-sm">
+      <p className="mb-1 text-xs font-semibold uppercase text-[#66736B]">
+        Resumen
+      </p>
+      {lines.filter(Boolean).map((line) => (
+        <p key={line} className="font-semibold">
+          {line}
+        </p>
       ))}
     </div>
   );
