@@ -1315,7 +1315,11 @@ export default function Home() {
         <HomeHeader
           title={actionMode === "transfer" ? "Enviar pesos" : "COPm"}
           onActivity={() => setHomePanel("activity")}
-          onDetails={() => setHomePanel("details")}
+          onDetails={() =>
+            setHomePanel((currentPanel) =>
+              currentPanel === "details" ? null : "details"
+            )
+          }
         />
 
         {homePanel === "activity" ? (
@@ -2425,6 +2429,151 @@ function ActionModeTabs({
   );
 }
 
+type RateChartInterval = "1h" | "1d" | "1w" | "1m" | "1y";
+
+const rateChartIntervals: RateChartInterval[] = ["1h", "1d", "1w", "1m", "1y"];
+
+function getSparklinePoints(values: number[], width = 320, height = 88) {
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+
+  return values.map((value, index) => {
+    const x = (index / Math.max(values.length - 1, 1)) * width;
+    const y = 2 + height - ((value - min) / range) * height;
+    return { x, y };
+  });
+}
+
+function buildSmoothSparklinePath(points: { x: number; y: number }[]) {
+  if (points.length < 2) return "";
+
+  return points.reduce((path, point, index) => {
+    if (index === 0) return `M ${point.x.toFixed(2)} ${point.y.toFixed(2)}`;
+
+    const previous = points[index - 1];
+    const controlX = previous.x + (point.x - previous.x) / 2;
+    return `${path} C ${controlX.toFixed(2)} ${previous.y.toFixed(2)}, ${controlX.toFixed(2)} ${point.y.toFixed(2)}, ${point.x.toFixed(2)} ${point.y.toFixed(2)}`;
+  }, "");
+}
+
+function getRateChartValues(
+  interval: RateChartInterval,
+  copPerUsd: number,
+  copVsUsdChange: number | null
+) {
+  const shapes: Record<RateChartInterval, number[]> = {
+    "1h": [0.36, 0.4, 0.34, 0.46, 0.42, 0.55, 0.48, 0.58, 0.52, 0.62],
+    "1d": [0.3, 0.28, 0.36, 0.33, 0.48, 0.44, 0.57, 0.5, 0.64, 0.6],
+    "1w": [0.28, 0.42, 0.35, 0.5, 0.46, 0.64, 0.56, 0.72, 0.68, 0.78],
+    "1m": [0.62, 0.55, 0.58, 0.48, 0.5, 0.42, 0.46, 0.36, 0.4, 0.34],
+    "1y": [0.26, 0.38, 0.34, 0.48, 0.44, 0.62, 0.54, 0.74, 0.66, 0.82],
+  };
+  const trend = (copVsUsdChange ?? 0) / 100;
+
+  return shapes[interval].map((point, index, points) => {
+    const progress = index / Math.max(points.length - 1, 1);
+    const wave = (point - 0.45) * 0.006;
+    const drift = trend * progress * 0.35;
+    return copPerUsd * (1 + wave - drift);
+  });
+}
+
+function getCopChangeFromUsdCopValues(values: number[]) {
+  const first = values[0];
+  const last = values[values.length - 1];
+  if (!first || !last) return 0;
+
+  return ((first - last) / first) * 100;
+}
+
+function CompactCopmRateChart({
+  copPerUsd,
+  copVsUsdChange,
+}: {
+  copPerUsd: number;
+  copVsUsdChange: number | null;
+}) {
+  const [interval, setInterval] = useState<RateChartInterval>("1d");
+  const values = getRateChartValues(interval, copPerUsd, copVsUsdChange);
+  const points = getSparklinePoints(values);
+  const linePath = buildSmoothSparklinePath(points);
+  const areaPath = `${linePath} L 320 92 L 0 92 Z`;
+  const intervalChange = getCopChangeFromUsdCopValues(values);
+  const isUp = intervalChange >= 0;
+  const strokeColor = isUp ? "#0E7C4F" : "#B42318";
+
+  return (
+    <div className="mb-3 rounded-[8px] border border-[#DDE4DC] bg-white p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-[#17211B]">COPm / USD</p>
+          <p className="mt-1 text-xs font-medium text-[#66736B]">
+            1 USD = {formatCopPerUsd(copPerUsd)} COPm
+          </p>
+        </div>
+        {Math.abs(intervalChange) > 0.001 ? (
+          <span
+            className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+              isUp ? "bg-[#E6F4EE] text-[#0E7C4F]" : "bg-[#FDECEC] text-[#B42318]"
+            }`}
+          >
+            {isUp ? "▲" : "▼"} {formatRateChange(intervalChange)}% {interval}
+          </span>
+        ) : null}
+      </div>
+
+      <svg
+        viewBox="0 0 320 92"
+        className="mt-3 h-24 w-full overflow-visible"
+        role="img"
+        aria-label="Movimiento COPm contra USD"
+      >
+        <defs>
+          <linearGradient id="copm-rate-fill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor={strokeColor} stopOpacity="0.2" />
+            <stop offset="100%" stopColor={strokeColor} stopOpacity="0" />
+          </linearGradient>
+          <filter id="copm-rate-glow" x="-10%" y="-40%" width="120%" height="180%">
+            <feGaussianBlur stdDeviation="1.4" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+        <path d={areaPath} fill="url(#copm-rate-fill)" />
+        <path
+          d={linePath}
+          fill="none"
+          stroke={strokeColor}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="3"
+          filter="url(#copm-rate-glow)"
+        />
+      </svg>
+
+      <div className="mt-3 grid grid-cols-5 gap-1 rounded-full bg-[#F7F8F5] p-1">
+        {rateChartIntervals.map((item) => (
+          <button
+            key={item}
+            type="button"
+            onClick={() => setInterval(item)}
+            className={`h-8 rounded-full text-xs font-semibold ${
+              interval === item
+                ? "bg-[#E9DFFC] text-[#56359A]"
+                : "text-[#66736B]"
+            }`}
+          >
+            {item}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function BuyCopmScreen({
   copAmount,
   copRateChange,
@@ -2558,6 +2707,13 @@ function BuyCopmScreen({
 
   return (
     <div className="flex flex-1 flex-col">
+      {isLive ? (
+        <CompactCopmRateChart
+          copPerUsd={copPerUsd}
+          copVsUsdChange={copVsUsdChange}
+        />
+      ) : null}
+
       <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
         <p className="text-sm font-medium text-[#66736B]">Disponible para convertir</p>
         <p className="mt-1 text-2xl font-semibold leading-none">
