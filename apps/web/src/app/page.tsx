@@ -48,9 +48,11 @@ import {
 } from "@/lib/mock-portfolio";
 import { getTargetNetwork } from "@/lib/network-config";
 import {
+  formatSquidErrorForSupport,
   getSquidCopmRoute,
   getSquidServiceFeeUsd,
   getSquidStatus,
+  SquidApiError,
   SQUID_INTEGRATOR_FEE_BPS,
   SQUID_INTEGRATOR_FEE_SPLIT,
   type SquidRouteResult,
@@ -162,6 +164,9 @@ function getFriendlyErrorMessage(error: unknown, context: "swap" | "transfer" = 
   }
 
   if (lowerMessage.includes("low liquidity")) {
+    if (error instanceof SquidApiError) {
+      console.error("[COP By Squid debug]", formatSquidErrorForSupport(error));
+    }
     return "No encontramos suficiente liquidez para comprar COPm con este token. Intenta con un monto menor o con otro token.";
   }
 
