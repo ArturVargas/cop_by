@@ -13,7 +13,10 @@ export async function ensureSwapTable() {
       user_address TEXT NOT NULL,
       chain_id INTEGER NOT NULL,
       status TEXT NOT NULL,
+      swap_type TEXT NOT NULL DEFAULT 'buy',
       requested_copm TEXT NOT NULL,
+      output_token TEXT NOT NULL DEFAULT 'COPm',
+      output_amount TEXT,
       recipient_address TEXT,
       tokens_spent JSONB NOT NULL DEFAULT '[]'::jsonb,
       squid_request_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -33,6 +36,18 @@ export async function ensureSwapTable() {
   await getSql()`
     ALTER TABLE swap_intents
     ADD COLUMN IF NOT EXISTS recipient_address TEXT
+  `;
+  await getSql()`
+    ALTER TABLE swap_intents
+    ADD COLUMN IF NOT EXISTS swap_type TEXT NOT NULL DEFAULT 'buy'
+  `;
+  await getSql()`
+    ALTER TABLE swap_intents
+    ADD COLUMN IF NOT EXISTS output_token TEXT NOT NULL DEFAULT 'COPm'
+  `;
+  await getSql()`
+    ALTER TABLE swap_intents
+    ADD COLUMN IF NOT EXISTS output_amount TEXT
   `;
 }
 

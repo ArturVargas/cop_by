@@ -1273,6 +1273,7 @@ export default function Home() {
     setSellError(null);
     setSellReceivedUsdt(null);
     setSellTxHash(null);
+    let intentId: string | undefined;
 
     try {
       if (!portfolio.address || !copmToken.address || !usdtToken.address) {
@@ -1286,6 +1287,15 @@ export default function Home() {
       }
 
       const fromAmount = parseCopmUnits(sellAmount, copmToken.decimals);
+      intentId = createIntentId();
+      await createSwapIntent({
+        chainId: targetNetwork.chainId,
+        intentId,
+        outputToken: "USDT",
+        requestedCopm: sellAmount,
+        swapType: "sell",
+        userAddress: portfolio.address,
+      });
       setSellStatus("quoting");
 
       const initialUsdtBalance = publicClient
@@ -1308,6 +1318,7 @@ export default function Home() {
         toToken: usdtToken.address,
       });
       const quotedUsdt = getRouteToAmount(routeResult);
+      const feeUsd = getRouteFeeUsd(routeResult);
       const approvalTarget = routeResult.approvalTarget;
 
       if (!approvalTarget) {
@@ -1356,6 +1367,19 @@ export default function Home() {
         value: BigInt(transactionRequest.value ?? "0"),
       });
       setSellTxHash(hash);
+      await updateSwapIntent(intentId, {
+        feeUsd: feeUsd.toFixed(6),
+        squidRequestIds: routeResult.requestId ? [routeResult.requestId] : [],
+        status: "submitted",
+        swapTxHashes: [hash],
+        tokensSpent: [
+          {
+            amount: formatUnits(fromAmount, copmToken.decimals),
+            amountUsd: Number(formatUnits(fromAmount, copmToken.decimals)) / copPerUsd,
+            symbol: "COPm",
+          },
+        ],
+      });
       setSellStatus("processing");
       await publicClient?.waitForTransactionReceipt({ hash });
       await waitForSquidStatus(routeResult, hash, targetNetwork.squidChainId);
@@ -1380,6 +1404,13 @@ export default function Home() {
           ? formatUnits(receivedUsdt, usdtToken.decimals)
           : "No disponible"
       );
+      await updateSwapIntent(intentId, {
+        outputAmount:
+          receivedUsdt !== undefined
+            ? formatUnits(receivedUsdt, usdtToken.decimals)
+            : undefined,
+        status: "confirmed",
+      });
       setSwapResult({
         amountLabel: "Recibiste",
         completedAt: new Date().toISOString(),
@@ -1397,7 +1428,14 @@ export default function Home() {
       await refreshCopmBalance();
     } catch (error) {
       setSellStatus("error");
-      setSellError(getFriendlyErrorMessage(error));
+      const friendlyError = getFriendlyErrorMessage(error);
+      setSellError(friendlyError);
+      if (intentId) {
+        void updateSwapIntent(intentId, {
+          error: friendlyError,
+          status: "failed",
+        });
+      }
     }
   };
 
@@ -2303,7 +2341,12 @@ function ActivityPanel({
         <div className="space-y-2">
           {items.map((item) => {
             const isSwap = item.type === "swap";
-            const title = isSwap ? "Obtuviste pesos" : "Enviaste pesos";
+            const isSell = item.swapType === "sell";
+            const title = isSwap
+              ? isSell
+                ? "Vendiste pesos"
+                : "Obtuviste pesos"
+              : "Enviaste pesos";
             const statusLabel = getActivityStatusLabel(item.status, item.error);
             const statusTone = getActivityStatusTone(item.status, item.error);
 
@@ -2318,7 +2361,7 @@ function ActivityPanel({
                       {title}
                     </p>
                     <p className="mt-1 text-xs text-[#66736B]">
-                      {isSwap ? "Destino" : "A"}{" "}
+                  {isSwap ? (isSell ? "Desde" : "Destino") : "A"}{" "}
                       {formatActivityRecipient(item.recipientAddress)}
                     </p>
                   </div>
@@ -2329,7 +2372,7 @@ function ActivityPanel({
                   </span>
                 </div>
                 <p className="mt-3 text-lg font-semibold text-[#0E7C4F]">
-                  {isSwap ? "+" : "-"}
+                  {isSwap && !isSell ? "+" : "-"}
                   {formatPesoAmountFromString(item.amount)} pesos
                 </p>
                 <div className="mt-1 flex items-center justify-between gap-3 text-xs text-[#66736B]">

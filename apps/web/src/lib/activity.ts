@@ -5,6 +5,7 @@ export type ActivityItem = {
   id: string;
   recipientAddress: string | null;
   status: string;
+  swapType?: "buy" | "sell";
   txHash: string | null;
   type: "swap" | "transfer";
   updatedAt: string;
@@ -17,6 +18,7 @@ type SwapRow = {
   recipient_address: string | null;
   requested_copm: string;
   status: string;
+  swap_type?: string | null;
   swap_tx_hashes: unknown;
   updated_at: string;
   user_address: string;
@@ -46,6 +48,7 @@ function mapSwap(row: SwapRow): ActivityItem {
     id: row.intent_id,
     recipientAddress: row.recipient_address,
     status: row.status,
+    swapType: row.swap_type === "sell" ? "sell" : "buy",
     txHash: asTxHash(row.swap_tx_hashes),
     type: "swap",
     updatedAt: row.updated_at,

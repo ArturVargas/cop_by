@@ -6,8 +6,10 @@ import { ensureSwapTable, getSql } from "@/lib/db";
 type CreateSwapBody = {
   chainId?: number;
   intentId?: string;
+  outputToken?: string;
   recipientAddress?: string;
   requestedCopm?: string;
+  swapType?: "buy" | "sell";
   userAddress?: string;
 };
 
@@ -29,6 +31,9 @@ export async function GET(request: Request) {
         user_address,
         recipient_address,
         requested_copm,
+        swap_type,
+        output_token,
+        output_amount,
         status,
         swap_tx_hashes,
         error,
@@ -71,7 +76,9 @@ export async function POST(request: Request) {
         recipient_address,
         chain_id,
         status,
-        requested_copm
+        swap_type,
+        requested_copm,
+        output_token
       )
       VALUES (
         ${body.intentId},
@@ -79,7 +86,9 @@ export async function POST(request: Request) {
         ${(body.recipientAddress ?? body.userAddress).toLowerCase()},
         ${body.chainId},
         'created',
-        ${body.requestedCopm}
+        ${body.swapType ?? "buy"},
+        ${body.requestedCopm},
+        ${body.outputToken ?? "COPm"}
       )
       ON CONFLICT (intent_id) DO UPDATE SET
         updated_at = NOW()
