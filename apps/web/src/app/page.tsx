@@ -52,6 +52,7 @@ import { getTargetNetwork } from "@/lib/network-config";
 import {
   formatSquidErrorForSupport,
   getSquidCopmRoute,
+  getSquidRoute,
   getSquidServiceFeeUsd,
   getSquidStatus,
   SquidApiError,
@@ -108,7 +109,7 @@ const SQUID_CELO_APPROVAL_TARGET =
 
 type SwapStatus = "idle" | "quoting" | "buying" | "complete" | "error";
 type SwapProgress = "idle" | "quoting" | "confirming" | "processing";
-type ActionMode = "buy" | "transfer";
+type ActionMode = "buy" | "sell" | "transfer";
 type HomePanel = "activity" | "details" | "chart" | null;
 type SwapResult = {
   amountLabel?: string;
@@ -130,6 +131,14 @@ type ShortfallQuote = {
   message: string;
 };
 type TransferStatus = "idle" | "confirming" | "sending" | "complete" | "error";
+type SellStatus =
+  | "idle"
+  | "quoting"
+  | "approving"
+  | "confirming"
+  | "processing"
+  | "complete"
+  | "error";
 type SwapPlanLeg = {
   token: PortfolioToken;
   usdAmount: number;
@@ -501,6 +510,7 @@ function getCopmReceivedFromReceipts(
 export default function Home() {
   const targetNetwork = getTargetNetwork();
   const copmToken = targetNetwork.tokens.copm;
+  const usdtToken = targetNetwork.tokens.usdt;
   const approvalRouteKeyRef = useRef<string | null>(null);
   const [approvalTargets, setApprovalTargets] = useState<
     Partial<Record<string, Address>>
@@ -524,6 +534,11 @@ export default function Home() {
   const [transferConfirming, setTransferConfirming] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
   const [transferStatus, setTransferStatus] = useState<TransferStatus>("idle");
+  const [sellAmount, setSellAmount] = useState("");
+  const [sellError, setSellError] = useState<string | null>(null);
+  const [sellReceivedUsdt, setSellReceivedUsdt] = useState<string | null>(null);
+  const [sellStatus, setSellStatus] = useState<SellStatus>("idle");
+  const [sellTxHash, setSellTxHash] = useState<string | null>(null);
   const [copmBalance, setCopmBalance] = useState<bigint | undefined>();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [activating, setActivating] = useState<string | null>(null);
@@ -578,7 +593,7 @@ export default function Home() {
     setShowOnboarding(!hasSeenOnboarding());
 
     const savedMode = window.sessionStorage.getItem(ACTION_MODE_STORAGE_KEY);
-    if (savedMode === "buy" || savedMode === "transfer") {
+    if (savedMode === "buy" || savedMode === "sell" || savedMode === "transfer") {
       setActionMode(savedMode);
     }
 
@@ -802,6 +817,33 @@ export default function Home() {
 
     return (await publicClient.readContract({
       address: token.address as Address,
+      abi: erc20Abi,
+      functionName: "allowance",
+      args: [portfolio.address, spender],
+    })) as bigint;
+  };
+
+  const waitForErc20Allowance = async (
+    tokenAddress: Address,
+    spender: Address,
+    minimum: bigint
+  ) => {
+    if (!publicClient || !portfolio.address) return minimum;
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const allowance = (await publicClient.readContract({
+        address: tokenAddress,
+        abi: erc20Abi,
+        functionName: "allowance",
+        args: [portfolio.address, spender],
+      })) as bigint;
+
+      if (allowance >= minimum) return allowance;
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+
+    return (await publicClient.readContract({
+      address: tokenAddress,
       abi: erc20Abi,
       functionName: "allowance",
       args: [portfolio.address, spender],
@@ -1227,6 +1269,125 @@ export default function Home() {
     }
   };
 
+  const sellCopm = async () => {
+    setSellError(null);
+    setSellReceivedUsdt(null);
+    setSellTxHash(null);
+
+    try {
+      if (!portfolio.address || !copmToken.address || !usdtToken.address) {
+        throw new Error("Wallet not ready");
+      }
+
+      const amountNumber = parseCopAmount(sellAmount);
+      if (amountNumber <= 0) throw new Error("Ingresa un monto mayor a 0.");
+      if (copmBalance !== undefined && parseCopmUnits(sellAmount, copmToken.decimals) > copmBalance) {
+        throw new Error("Saldo COPm insuficiente.");
+      }
+
+      const fromAmount = parseCopmUnits(sellAmount, copmToken.decimals);
+      setSellStatus("quoting");
+
+      const initialUsdtBalance = publicClient
+        ? ((await publicClient.readContract({
+            address: usdtToken.address,
+            abi: erc20Abi,
+            functionName: "balanceOf",
+            args: [portfolio.address],
+          })) as bigint)
+        : undefined;
+
+      const routeResult = await getSquidRoute({
+        fromAddress: portfolio.address,
+        fromAmount: fromAmount.toString(),
+        fromChain: targetNetwork.squidChainId,
+        fromToken: copmToken.address,
+        slippage: 0.3,
+        toAddress: portfolio.address,
+        toChain: targetNetwork.squidChainId,
+        toToken: usdtToken.address,
+      });
+      const quotedUsdt = getRouteToAmount(routeResult);
+      const approvalTarget = routeResult.approvalTarget;
+
+      if (!approvalTarget) {
+        throw new Error("No pudimos preparar el permiso para vender COPm.");
+      }
+
+      let allowance = await waitForErc20Allowance(
+        copmToken.address,
+        approvalTarget,
+        fromAmount
+      );
+
+      if (allowance < fromAmount) {
+        setSellStatus("approving");
+        const approveHash = await writeContractAsync({
+          address: copmToken.address,
+          abi: erc20Abi,
+          functionName: "approve",
+          args: [approvalTarget, fromAmount],
+        });
+        await publicClient?.waitForTransactionReceipt({ hash: approveHash });
+        allowance = await waitForErc20Allowance(
+          copmToken.address,
+          approvalTarget,
+          fromAmount
+        );
+      }
+
+      if (allowance < fromAmount) {
+        throw new Error("El permiso aprobado no alcanza para esta venta.");
+      }
+
+      const transactionRequest = routeResult.route?.transactionRequest;
+      if (
+        !transactionRequest?.target ||
+        !isAddress(transactionRequest.target) ||
+        !transactionRequest.data
+      ) {
+        throw new Error("Invalid Squid transaction");
+      }
+
+      setSellStatus("confirming");
+      const hash = await sendTransactionAsync({
+        to: transactionRequest.target,
+        data: transactionRequest.data,
+        value: BigInt(transactionRequest.value ?? "0"),
+      });
+      setSellTxHash(hash);
+      setSellStatus("processing");
+      await publicClient?.waitForTransactionReceipt({ hash });
+      await waitForSquidStatus(routeResult, hash, targetNetwork.squidChainId);
+
+      const finalUsdtBalance = publicClient
+        ? ((await publicClient.readContract({
+            address: usdtToken.address,
+            abi: erc20Abi,
+            functionName: "balanceOf",
+            args: [portfolio.address],
+          })) as bigint)
+        : undefined;
+      const receivedUsdt =
+        initialUsdtBalance !== undefined &&
+        finalUsdtBalance !== undefined &&
+        finalUsdtBalance > initialUsdtBalance
+          ? finalUsdtBalance - initialUsdtBalance
+          : quotedUsdt;
+
+      setSellReceivedUsdt(
+        receivedUsdt !== undefined
+          ? formatUnits(receivedUsdt, usdtToken.decimals)
+          : "No disponible"
+      );
+      setSellStatus("complete");
+      await refreshCopmBalance();
+    } catch (error) {
+      setSellStatus("error");
+      setSellError(getFriendlyErrorMessage(error));
+    }
+  };
+
   const sendCopmTransfer = async () => {
     setTransferError(null);
 
@@ -1313,7 +1474,13 @@ export default function Home() {
       )}
       <section className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-md flex-col px-4 py-3 sm:max-w-lg sm:py-5 md:max-w-2xl">
         <HomeHeader
-          title={actionMode === "transfer" ? "Enviar pesos" : "COPm"}
+          title={
+            actionMode === "transfer"
+              ? "Enviar pesos"
+              : actionMode === "sell"
+                ? "Vender pesos"
+                : "COPm"
+          }
           onActivity={() => setHomePanel("activity")}
           onDetails={() =>
             setHomePanel((currentPanel) =>
@@ -1392,8 +1559,45 @@ export default function Home() {
           </>
         ) : (
           <>
-            <BuySellTabs />
-            {step === 0 ? (
+            <BuySellTabs
+              mode={actionMode === "sell" ? "sell" : "buy"}
+              onChange={(mode) => handleActionModeChange(mode)}
+            />
+            {actionMode === "sell" ? (
+              <SellCopmScreen
+                amount={sellAmount}
+                balance={copmBalance}
+                error={sellError}
+                receivedUsdt={sellReceivedUsdt}
+                status={sellStatus}
+                tokenDecimals={copmToken.decimals}
+                txHash={sellTxHash}
+                txUrl={
+                  sellTxHash
+                    ? `${targetNetwork.blockExplorerUrl}/tx/${sellTxHash}`
+                    : undefined
+                }
+                onAmountChange={(value) => {
+                  setSellAmount(cleanCopInput(value));
+                  setSellError(null);
+                  setSellReceivedUsdt(null);
+                  setSellStatus("idle");
+                  setSellTxHash(null);
+                }}
+                onMax={() => {
+                  if (copmBalance !== undefined) {
+                    setSellAmount(
+                      formatPesoAmountFromBigInt(copmBalance, copmToken.decimals)
+                    );
+                    setSellError(null);
+                    setSellReceivedUsdt(null);
+                    setSellStatus("idle");
+                    setSellTxHash(null);
+                  }
+                }}
+                onSell={sellCopm}
+              />
+            ) : step === 0 ? (
               <TokenOrderScreen
                 tokens={tokens}
                 canContinue={
@@ -1942,16 +2146,34 @@ function HomeHeader({
   );
 }
 
-function BuySellTabs() {
+function BuySellTabs({
+  mode,
+  onChange,
+}: {
+  mode: "buy" | "sell";
+  onChange: (mode: "buy" | "sell") => void;
+}) {
   return (
     <div className="mb-3 grid grid-cols-2 gap-1 rounded-full bg-white p-1 shadow-sm">
-      <button className="h-10 rounded-full bg-[#6D45B8] text-sm font-semibold text-white">
+      <button
+        type="button"
+        onClick={() => onChange("buy")}
+        className={`h-10 rounded-full text-sm font-semibold ${
+          mode === "buy"
+            ? "bg-[#6D45B8] text-white"
+            : "text-[#9AA69D]"
+        }`}
+      >
         Comprar COPm
       </button>
       <button
         type="button"
-        disabled
-        className="h-10 rounded-full text-sm font-semibold text-[#9AA69D]"
+        onClick={() => onChange("sell")}
+        className={`h-10 rounded-full text-sm font-semibold ${
+          mode === "sell"
+            ? "bg-[#6D45B8] text-white"
+            : "text-[#9AA69D]"
+        }`}
       >
         Vender COPm
       </button>
@@ -3058,6 +3280,124 @@ function RecipientAddressInput({
       <p className="rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-xs font-semibold leading-5 text-[#17211B]">
         {warning}
       </p>
+    </div>
+  );
+}
+
+function SellCopmScreen({
+  amount,
+  balance,
+  error,
+  receivedUsdt,
+  status,
+  tokenDecimals,
+  txHash,
+  txUrl,
+  onAmountChange,
+  onMax,
+  onSell,
+}: {
+  amount: string;
+  balance?: bigint;
+  error: string | null;
+  receivedUsdt: string | null;
+  status: SellStatus;
+  tokenDecimals: number;
+  txHash: string | null;
+  txUrl?: string;
+  onAmountChange: (value: string) => void;
+  onMax: () => void;
+  onSell: () => void;
+}) {
+  const balanceDisplay =
+    balance === undefined ? "0" : formatCopmUnits(balance, tokenDecimals);
+  const amountNumber = parseCopAmount(amount);
+  const amountUnits =
+    amountNumber > 0 ? parseCopmUnits(amount, tokenDecimals) : 0n;
+  const hasInsufficientBalance =
+    balance !== undefined && amountUnits > balance;
+  const isBusy = ["quoting", "approving", "confirming", "processing"].includes(status);
+  const buttonLabel =
+    status === "quoting"
+      ? "Cotizando"
+      : status === "approving"
+        ? "Aprobando COPm"
+        : status === "confirming"
+          ? "Confirma en tu wallet"
+          : status === "processing"
+            ? "Vendiendo COPm"
+            : "Vender por USDT";
+  const canSell = amountNumber > 0 && !hasInsufficientBalance && !isBusy;
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
+        <p className="text-sm font-medium text-[#66736B]">Pesos disponibles</p>
+        <p className="mt-1 text-2xl font-semibold leading-none">
+          {balanceDisplay}{" "}
+          <span className="text-sm font-medium text-[#66736B]">pesos</span>
+        </p>
+      </div>
+
+      <div className="mt-3 rounded-[8px] border border-[#DDE4DC] bg-white p-4">
+        <label className="block text-sm font-semibold text-[#17211B]">
+          ¿Cuántos pesos quieres vender?
+        </label>
+        <div className="mt-2 flex gap-2">
+          <input
+            inputMode="numeric"
+            value={amount}
+            onChange={(event) => onAmountChange(event.target.value)}
+            className="h-[52px] min-w-0 flex-1 rounded-[8px] border border-[#DDE4DC] bg-[#F7F8F5] px-4 text-2xl font-semibold outline-none ring-[#6D45B8] focus:ring-2"
+          />
+          <button
+            type="button"
+            onClick={onMax}
+            className="h-[52px] rounded-[8px] bg-[#E9DFFC] px-4 text-sm font-semibold text-[#56359A]"
+          >
+            Max
+          </button>
+        </div>
+        <p className="mt-2 text-xs font-medium text-[#66736B]">
+          Recibirás USDT en esta wallet.
+        </p>
+
+        {hasInsufficientBalance && (
+          <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
+            Saldo COPm insuficiente para vender esta cantidad.
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-3 rounded-[8px] bg-[#FDECEC] px-3 py-2 text-sm font-medium leading-5 text-[#8A1F1F]">
+            {error}
+          </div>
+        )}
+
+        {status === "complete" && (
+          <div className="mt-3 rounded-[8px] bg-[#E6F4EE] px-3 py-2 text-sm font-medium leading-5 text-[#0E7C4F]">
+            Venta completada. Recibiste {receivedUsdt ?? "USDT"} USDT.
+            {txHash && txUrl ? (
+              <a
+                href={txUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1 block font-semibold underline-offset-2 hover:underline"
+              >
+                Ver transacción {formatAddressPreview(txHash)}
+              </a>
+            ) : null}
+          </div>
+        )}
+
+        <Button
+          className="mt-4 h-12 w-full rounded-[8px] bg-[#6D45B8] text-base font-semibold text-white hover:bg-[#56359A] disabled:bg-[#C8B9E8]"
+          disabled={!canSell}
+          onClick={onSell}
+        >
+          {buttonLabel}
+        </Button>
+      </div>
     </div>
   );
 }
