@@ -23,8 +23,10 @@ import {
   ChevronRight,
   ChevronUp,
   Bookmark,
+  Clock,
   Copy,
   GripVertical,
+  Menu,
   ShieldCheck,
   X,
 } from "lucide-react";
@@ -98,6 +100,7 @@ const SQUID_CELO_APPROVAL_TARGET =
 type SwapStatus = "idle" | "quoting" | "buying" | "complete" | "error";
 type SwapProgress = "idle" | "quoting" | "confirming" | "processing";
 type ActionMode = "buy" | "transfer";
+type HomePanel = "activity" | "details" | "chart" | null;
 type SwapResult = {
   amountLabel?: string;
   completedAt?: string;
@@ -492,9 +495,10 @@ export default function Home() {
   const publicClient = usePublicClient();
   const { sendTransactionAsync } = useSendTransaction();
   const { writeContractAsync } = useWriteContract();
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(2);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [actionMode, setActionMode] = useState<ActionMode>("buy");
+  const [homePanel, setHomePanel] = useState<HomePanel>(null);
   const [tokens, setTokens] = useState(mockPortfolioTokens);
   const [copAmount, setCopAmount] = useState(purchasePreview.copAmount);
   const [recipientMode, setRecipientMode] = useState<"self" | "other">("self");
@@ -552,7 +556,7 @@ export default function Home() {
 
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [step]);
+  }, [homePanel, step]);
 
   useEffect(() => {
     setShowOnboarding(!hasSeenOnboarding());
@@ -590,6 +594,7 @@ export default function Home() {
 
   const handleActionModeChange = (mode: ActionMode) => {
     setActionMode(mode);
+    setHomePanel(null);
     window.sessionStorage.setItem(ACTION_MODE_STORAGE_KEY, mode);
     if (mode === "transfer") {
       setStep(2);
@@ -1274,6 +1279,11 @@ export default function Home() {
   };
 
   const hasCopmBalance = copmBalance !== undefined && copmBalance > 0n;
+  const copmBalanceLabel =
+    copmBalance === undefined
+      ? "0"
+      : formatPesoAmountFromBigInt(copmBalance, copmToken.decimals);
+  const copmBalanceUsd = parseCopAmount(copmBalanceLabel) / copPerUsd;
 
   return (
     <main className="min-h-[calc(100vh-3rem)] bg-[#F7F8F5] text-[#17211B]">
@@ -1286,24 +1296,32 @@ export default function Home() {
         />
       )}
       <section className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-md flex-col px-4 py-3 sm:max-w-lg sm:py-5 md:max-w-2xl">
-        <ActionModeTabs mode={actionMode} onChange={handleActionModeChange} />
+        <HomeHeader
+          title={actionMode === "transfer" ? "Enviar pesos" : "COPm"}
+          onActivity={() => setHomePanel("activity")}
+          onDetails={() => setHomePanel("details")}
+        />
 
-        {actionMode === "buy" && (
-          <div className="mb-3 mt-3 grid grid-cols-3 gap-2">
-            {steps.map((label, index) => (
-              <button
-                key={label}
-                type="button"
-                onClick={() => setStep(index)}
-                className="h-2 rounded-full transition-colors"
-                style={{ backgroundColor: index <= step ? stepColors[index] : "#DDE4DC" }}
-                aria-label={`Ir a ${label}`}
-              />
-            ))}
-          </div>
-        )}
-
-        {actionMode === "transfer" ? (
+        {homePanel === "activity" ? (
+          <ActivityPanel onClose={() => setHomePanel(null)} />
+        ) : homePanel === "details" ? (
+          <DetailsPanel
+            approvalUsd={purchasePreview.activationCapUsd}
+            balanceCopm={copmBalanceLabel}
+            balanceUsd={copmBalanceUsd}
+            tokens={tokens}
+            onClose={() => setHomePanel(null)}
+            onSpend={() => undefined}
+            onTransfer={() => handleActionModeChange("transfer")}
+          />
+        ) : homePanel === "chart" ? (
+          <CopmChartPanel
+            balanceCopm={copmBalanceLabel}
+            balanceUsd={copmBalanceUsd}
+            copPerUsd={copPerUsd}
+            onClose={() => setHomePanel(null)}
+          />
+        ) : actionMode === "transfer" ? (
           <TransferCopmScreen
             amount={transferAmount}
             balance={copmBalance}
@@ -1339,7 +1357,14 @@ export default function Home() {
           />
         ) : (
           <>
-            {step === 0 && (
+            <BuySellTabs />
+            <CopmBalanceCard
+              balanceCopm={copmBalanceLabel}
+              balanceUsd={copmBalanceUsd}
+              copPerUsd={copPerUsd}
+              onClick={() => setHomePanel("chart")}
+            />
+            {step === 0 ? (
               <TokenOrderScreen
                 tokens={tokens}
                 canContinue={
@@ -1352,9 +1377,7 @@ export default function Home() {
                 onReorder={reorderToken}
                 onContinue={() => setStep(1)}
               />
-            )}
-
-            {step === 1 && (
+            ) : step === 1 ? (
               <TokenActivationScreen
                 tokens={tokens}
                 allActive={allActive}
@@ -1365,9 +1388,7 @@ export default function Home() {
                 onActivate={activateNextToken}
                 onSkip={() => setStep(2)}
               />
-            )}
-
-            {step === 2 && (
+            ) : (
               <BuyCopmScreen
                 copAmount={copAmount}
                 copPerUsd={copPerUsd}
@@ -1856,6 +1877,241 @@ function TokenEmptyStateMessage({ userAddress }: { userAddress?: string }) {
         )}
       </div>
     </div>
+  );
+}
+
+function HomeHeader({
+  onActivity,
+  onDetails,
+  title,
+}: {
+  onActivity: () => void;
+  onDetails: () => void;
+  title: string;
+}) {
+  return (
+    <div className="mb-3 flex items-center justify-between">
+      <button
+        type="button"
+        onClick={onDetails}
+        aria-label="Detalles"
+        className="grid h-10 w-10 place-items-center rounded-full bg-white text-[#66736B] shadow-sm"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+      <p className="text-base font-semibold">{title}</p>
+      <button
+        type="button"
+        onClick={onActivity}
+        aria-label="Actividad"
+        className="grid h-10 w-10 place-items-center rounded-full bg-white text-[#66736B] shadow-sm"
+      >
+        <Clock className="h-5 w-5" />
+      </button>
+    </div>
+  );
+}
+
+function BuySellTabs() {
+  return (
+    <div className="mb-3 grid grid-cols-2 gap-1 rounded-full bg-white p-1 shadow-sm">
+      <button className="h-10 rounded-full bg-[#6D45B8] text-sm font-semibold text-white">
+        Comprar COPm
+      </button>
+      <button
+        type="button"
+        disabled
+        className="h-10 rounded-full text-sm font-semibold text-[#9AA69D]"
+      >
+        Vender COPm
+      </button>
+    </div>
+  );
+}
+
+function CopmBalanceCard({
+  balanceCopm,
+  balanceUsd,
+  copPerUsd,
+  onClick,
+}: {
+  balanceCopm: string;
+  balanceUsd: number;
+  copPerUsd: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mb-3 w-full rounded-[8px] border border-[#D9CCF7] bg-white p-4 text-left shadow-sm"
+    >
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm font-medium text-[#66736B]">Tu balance</p>
+          <p className="mt-1 text-2xl font-semibold">{balanceCopm} pesos</p>
+          <p className="mt-1 text-sm font-medium text-[#66736B]">
+            {formatUsd(balanceUsd)} USD aprox.
+          </p>
+        </div>
+        <span className="rounded-full bg-[#F2ECFF] px-3 py-1 text-xs font-semibold text-[#6D45B8]">
+          1 USD = {formatCopPerUsd(copPerUsd)}
+        </span>
+      </div>
+    </button>
+  );
+}
+
+function PanelShell({
+  children,
+  onClose,
+  title,
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+  title: string;
+}) {
+  return (
+    <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-xl font-semibold">{title}</h2>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Cerrar"
+          className="grid h-8 w-8 place-items-center rounded-full bg-[#F7F8F5] text-[#66736B]"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function ActivityPanel({ onClose }: { onClose: () => void }) {
+  return (
+    <PanelShell title="Actividad" onClose={onClose}>
+      <p className="py-12 text-center text-sm font-medium text-[#66736B]">
+        Tu actividad aparecerá aquí.
+      </p>
+      <Link
+        href="/activity"
+        className="block h-11 rounded-[8px] bg-[#6D45B8] pt-3 text-center text-sm font-semibold text-white"
+      >
+        Ver historial completo
+      </Link>
+    </PanelShell>
+  );
+}
+
+function DetailsPanel({
+  approvalUsd,
+  balanceCopm,
+  balanceUsd,
+  onClose,
+  onSpend,
+  onTransfer,
+  tokens,
+}: {
+  approvalUsd: number;
+  balanceCopm: string;
+  balanceUsd: number;
+  onClose: () => void;
+  onSpend: () => void;
+  onTransfer: () => void;
+  tokens: PortfolioToken[];
+}) {
+  return (
+    <PanelShell title="Detalles" onClose={onClose}>
+      <div className="rounded-[8px] bg-[#F7F8F5] p-3">
+        <p className="text-xs font-medium text-[#66736B]">Balance COPm</p>
+        <p className="mt-1 text-xl font-semibold">{balanceCopm} pesos</p>
+        <p className="text-sm font-medium text-[#66736B]">
+          {formatUsd(balanceUsd)} USD aprox.
+        </p>
+      </div>
+
+      <div className="mt-4">
+        <p className="mb-2 text-xs font-semibold uppercase text-[#66736B]">
+          Prioridad de gasto
+        </p>
+        <div className="space-y-2">
+          {tokens.map((token, index) => (
+            <div
+              key={token.symbol}
+              className="flex items-center justify-between rounded-[8px] bg-[#F7F8F5] px-3 py-2 text-sm"
+            >
+              <span className="font-semibold">
+                {index + 1}. {token.symbol}
+              </span>
+              <span className="text-[#66736B]">{token.balanceDisplay ?? formatUsd(token.balanceUsd)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-[8px] bg-[#FFF6D8] p-3 text-sm font-semibold">
+        Monto de permiso por token: hasta {formatUsd(approvalUsd)}
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={onTransfer}
+          className="h-11 rounded-[8px] bg-[#6D45B8] text-sm font-semibold text-white"
+        >
+          Transferir
+        </button>
+        <button
+          type="button"
+          onClick={onSpend}
+          disabled
+          className="h-11 rounded-[8px] bg-[#E9DFFC] text-sm font-semibold text-[#6D45B8] opacity-60"
+        >
+          Gastar
+        </button>
+      </div>
+    </PanelShell>
+  );
+}
+
+function CopmChartPanel({
+  balanceCopm,
+  balanceUsd,
+  copPerUsd,
+  onClose,
+}: {
+  balanceCopm: string;
+  balanceUsd: number;
+  copPerUsd: number;
+  onClose: () => void;
+}) {
+  return (
+    <PanelShell title="COPm / USD" onClose={onClose}>
+      <p className="text-sm font-medium text-[#66736B]">Tipo de cambio</p>
+      <p className="mt-1 text-3xl font-semibold">
+        1 USD = {formatCopPerUsd(copPerUsd)} COPm
+      </p>
+      <div className="mt-5 h-40 rounded-[8px] bg-[#17211B] p-4">
+        <svg viewBox="0 0 320 120" className="h-full w-full">
+          <path
+            d="M0 82 C30 64, 45 74, 70 54 S115 28, 145 58 S190 98, 220 72 S265 36, 320 50"
+            fill="none"
+            stroke="#6D45B8"
+            strokeLinecap="round"
+            strokeWidth="6"
+          />
+        </svg>
+      </div>
+      <div className="mt-4 rounded-[8px] bg-[#F7F8F5] p-3">
+        <p className="text-xs font-medium text-[#66736B]">Mi balance</p>
+        <p className="mt-1 text-xl font-semibold">{balanceCopm} COPm</p>
+        <p className="text-sm font-medium text-[#66736B]">
+          {formatUsd(balanceUsd)} USD aprox.
+        </p>
+      </div>
+    </PanelShell>
   );
 }
 
