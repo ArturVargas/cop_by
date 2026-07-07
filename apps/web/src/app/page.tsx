@@ -60,8 +60,10 @@ import {
 import {
   createSwapIntent,
   createCopmTransfer,
+  createSpendOrder,
   logSwapOnchain,
   updateCopmTransfer,
+  updateSpendOrder,
   updateSwapIntent,
 } from "@/lib/swap-logging";
 import {
@@ -1270,6 +1272,52 @@ export default function Home() {
     }
   };
 
+  const paySpendOrder = async (input: {
+    amountCopm: string;
+    category?: string;
+    email: string;
+    phone?: string;
+    productType: "topup" | "giftcard";
+    provider: string;
+  }) => {
+    if (!portfolio.address || !copmToken.address) throw new Error("Wallet not ready");
+
+    const amountDigits = input.amountCopm.replace(/\D/g, "");
+    const amount = parseCopmUnits(amountDigits, copmToken.decimals);
+    if (copmBalance !== undefined && amount > copmBalance) {
+      throw new Error("Saldo COPm insuficiente.");
+    }
+
+    const orderId = createIntentId();
+    const { paymentAddress } = await createSpendOrder({
+      ...input,
+      amountCopm: amountDigits,
+      chainId: targetNetwork.chainId,
+      orderId,
+      userAddress: portfolio.address,
+    });
+
+    try {
+      const hash = await writeContractAsync({
+        address: copmToken.address,
+        abi: erc20Abi,
+        functionName: "transfer",
+        args: [paymentAddress as Address, amount],
+      });
+      await updateSpendOrder(orderId, { paymentTxHash: hash, status: "submitted" });
+      await publicClient?.waitForTransactionReceipt({ hash });
+      await updateSpendOrder(orderId, { paymentTxHash: hash, status: "paid" });
+      await refreshCopmBalance();
+      return orderId;
+    } catch (error) {
+      await updateSpendOrder(orderId, {
+        error: getFriendlyErrorMessage(error, "transfer"),
+        status: "failed",
+      });
+      throw error;
+    }
+  };
+
   const hasCopmBalance = copmBalance !== undefined && copmBalance > 0n;
 
   return (
@@ -1301,7 +1349,7 @@ export default function Home() {
         )}
 
         {actionMode === "spend" ? (
-          <SpendScreen />
+          <SpendScreen onPay={paySpendOrder} />
         ) : actionMode === "transfer" ? (
           <TransferCopmScreen
             amount={transferAmount}
@@ -1921,7 +1969,18 @@ const giftcardCategories = [
 ] as const;
 const giftcardAmounts = ["20.000", "50.000", "100.000"] as const;
 
-function SpendScreen() {
+function SpendScreen({
+  onPay,
+}: {
+  onPay: (input: {
+    amountCopm: string;
+    category?: string;
+    email: string;
+    phone?: string;
+    productType: "topup" | "giftcard";
+    provider: string;
+  }) => Promise<string>;
+}) {
   const [flow, setFlow] = useState<"home" | "topup" | "giftcard" | "done">("home");
   const [topUpStep, setTopUpStep] = useState(0);
   const [giftStep, setGiftStep] = useState(0);
@@ -1932,6 +1991,9 @@ function SpendScreen() {
   const [category, setCategory] = useState<(typeof giftcardCategories)[number] | null>(null);
   const [brand, setBrand] = useState("");
   const [giftAmount, setGiftAmount] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [orderId, setOrderId] = useState("");
+  const [paying, setPaying] = useState(false);
   const selectedTitle = brand || operator;
   const selectedAmount = giftAmount || topUpAmount;
 
@@ -1939,6 +2001,29 @@ function SpendScreen() {
     setFlow("home");
     setTopUpStep(0);
     setGiftStep(0);
+    setError(null);
+    setOrderId("");
+  };
+
+  const pay = async (productType: "topup" | "giftcard") => {
+    setError(null);
+    setPaying(true);
+    try {
+      const paidOrderId = await onPay({
+        amountCopm: selectedAmount,
+        category: category?.name,
+        email,
+        phone: productType === "topup" ? phone : undefined,
+        productType,
+        provider: selectedTitle,
+      });
+      setOrderId(paidOrderId);
+      setFlow("done");
+    } catch (payError) {
+      setError(getFriendlyErrorMessage(payError, "transfer"));
+    } finally {
+      setPaying(false);
+    }
   };
 
   if (flow === "done") {
@@ -1960,6 +2045,12 @@ function SpendScreen() {
             <>
               <p className="mt-3 text-xs text-[#66736B]">Entrega</p>
               <p className="font-semibold">{email}</p>
+            </>
+          )}
+          {orderId && (
+            <>
+              <p className="mt-3 text-xs text-[#66736B]">Referencia</p>
+              <p className="font-mono text-xs font-semibold">{orderId}</p>
             </>
           )}
         </div>
@@ -2038,11 +2129,16 @@ function SpendScreen() {
             />
             <Button
               className="h-12 w-full rounded-[8px] bg-[#6D45B8] text-white hover:bg-[#56359A] disabled:bg-[#C8B9E8]"
-              disabled={!phone || !email}
-              onClick={() => setFlow("done")}
+              disabled={!phone || !email || paying}
+              onClick={() => void pay("topup")}
             >
-              Pagar con pesos
+              {paying ? "Confirmando..." : "Pagar con pesos"}
             </Button>
+            {error && (
+              <p className="mt-3 rounded-[8px] bg-[#FDECEC] px-3 py-2 text-sm font-semibold leading-5 text-[#8A1F1F]">
+                {error}
+              </p>
+            )}
           </SpendPanel>
         )}
       </div>
@@ -2130,11 +2226,16 @@ function SpendScreen() {
             <SpendSummary lines={[brand, `$${giftAmount} pesos`, email]} />
             <Button
               className="h-12 w-full rounded-[8px] bg-[#6D45B8] text-white hover:bg-[#56359A] disabled:bg-[#C8B9E8]"
-              disabled={!email}
-              onClick={() => setFlow("done")}
+              disabled={!email || paying}
+              onClick={() => void pay("giftcard")}
             >
-              Pagar con pesos
+              {paying ? "Confirmando..." : "Pagar con pesos"}
             </Button>
+            {error && (
+              <p className="mt-3 rounded-[8px] bg-[#FDECEC] px-3 py-2 text-sm font-semibold leading-5 text-[#8A1F1F]">
+                {error}
+              </p>
+            )}
           </SpendPanel>
         )}
       </div>

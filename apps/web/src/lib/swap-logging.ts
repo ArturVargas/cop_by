@@ -71,3 +71,42 @@ export async function updateCopmTransfer(
     method: "PATCH",
   });
 }
+
+export async function createSpendOrder(input: {
+  amountCopm: string;
+  category?: string;
+  chainId: number;
+  email: string;
+  orderId: string;
+  phone?: string;
+  productType: "topup" | "giftcard";
+  provider: string;
+  userAddress: string;
+}) {
+  const response = await fetch("/api/spend-orders", {
+    body: JSON.stringify(input),
+    headers: { "content-type": "application/json" },
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    throw new Error("No pudimos crear la orden.");
+  }
+
+  return response.json() as Promise<{ paymentAddress: `0x${string}` }>;
+}
+
+export async function updateSpendOrder(
+  orderId: string,
+  input: {
+    error?: string;
+    paymentTxHash?: string;
+    status: string;
+  }
+) {
+  await fetch(`/api/spend-orders/${orderId}`, {
+    body: JSON.stringify(input),
+    headers: { "content-type": "application/json" },
+    method: "PATCH",
+  });
+}
