@@ -122,7 +122,7 @@ type SwapResult = {
   title?: string;
   txHash: string;
   txUrl: string;
-  variant?: "swap" | "transfer";
+  variant?: "sell" | "swap" | "transfer";
 };
 type ShortfallQuote = {
   copAmount: string;
@@ -1380,6 +1380,19 @@ export default function Home() {
           ? formatUnits(receivedUsdt, usdtToken.decimals)
           : "No disponible"
       );
+      setSwapResult({
+        amountLabel: "Recibiste",
+        completedAt: new Date().toISOString(),
+        copmBalance: "Actualizando",
+        receivedCopm:
+          receivedUsdt !== undefined
+            ? formatUnits(receivedUsdt, usdtToken.decimals)
+            : "No disponible",
+        title: "Venta completada",
+        txHash: hash,
+        txUrl: `${targetNetwork.blockExplorerUrl}/tx/${hash}`,
+        variant: "sell",
+      });
       setSellStatus("complete");
       await refreshCopmBalance();
     } catch (error) {
@@ -2651,6 +2664,15 @@ function ActionModeTabs({
   );
 }
 
+function ButtonSpinner() {
+  return (
+    <span
+      className="h-4 w-4 animate-spin rounded-full border-2 border-white/45 border-t-white"
+      aria-hidden="true"
+    />
+  );
+}
+
 type RateChartInterval = "1h" | "1d" | "1w" | "1m" | "1y";
 
 const rateChartIntervals: RateChartInterval[] = ["1h", "1d", "1w", "1m", "1y"];
@@ -2896,6 +2918,7 @@ function BuyCopmScreen({
     requestedUsd > 0;
   const isBusy = swapStatus === "quoting" || swapStatus === "buying";
   const isApproving = Boolean(activating && approvalToken?.symbol === activating);
+  const showButtonSpinner = isBusy || isApproving;
   const buttonLabel =
     isApproving
       ? "Confirma en tu wallet"
@@ -3067,10 +3090,11 @@ function BuyCopmScreen({
         </div>
 
         <Button
-          className="mt-4 h-12 w-full rounded-[8px] bg-[#6D45B8] text-base font-semibold text-white hover:bg-[#56359A] disabled:bg-[#C8B9E8]"
+          className="mt-4 h-12 w-full gap-2 rounded-[8px] bg-[#6D45B8] text-base font-semibold text-white hover:bg-[#56359A] disabled:bg-[#C8B9E8]"
           disabled={isBusy || isApproving || (!canBuy && !canApprovePurchase)}
           onClick={needsApprovedToken ? onApprovePurchase : onBuy}
         >
+          {showButtonSpinner ? <ButtonSpinner /> : null}
           {buttonLabel}
         </Button>
         {progressMessage && (
@@ -3391,10 +3415,11 @@ function SellCopmScreen({
         )}
 
         <Button
-          className="mt-4 h-12 w-full rounded-[8px] bg-[#6D45B8] text-base font-semibold text-white hover:bg-[#56359A] disabled:bg-[#C8B9E8]"
+          className="mt-4 h-12 w-full gap-2 rounded-[8px] bg-[#6D45B8] text-base font-semibold text-white hover:bg-[#56359A] disabled:bg-[#C8B9E8]"
           disabled={!canSell}
           onClick={onSell}
         >
+          {isBusy ? <ButtonSpinner /> : null}
           {buttonLabel}
         </Button>
       </div>
@@ -3547,7 +3572,7 @@ function toShareableReceiptData(result: SwapResult): ShareableReceiptData {
     recipientAlias: result.recipientAlias,
     title: result.title ?? (result.variant === "transfer" ? "Envío completado" : "Conversión completada"),
     txHash: result.txHash,
-    variant: result.variant ?? "swap",
+    variant: result.variant === "transfer" ? "transfer" : "swap",
   };
 }
 
@@ -3565,6 +3590,7 @@ function SwapSuccessModal({
   const [sharingReceipt, setSharingReceipt] = useState(false);
   const [receiptFeedback, setReceiptFeedback] = useState<string | null>(null);
   const useReceiptPdf = shouldUseReceiptPdf(isMiniPay);
+  const isSell = result.variant === "sell";
   const isTransfer = result.variant === "transfer";
   const shareableReceipt = toShareableReceiptData(result);
 
@@ -3641,15 +3667,22 @@ function SwapSuccessModal({
           <Check className="h-5 w-5" />
         </div>
         <h2 className="text-xl font-semibold">
-          {result.title ?? (isTransfer ? "Envío completado" : "Conversión completada")}
+          {result.title ??
+            (isTransfer
+              ? "Envío completado"
+              : isSell
+                ? "Venta completada"
+                : "Conversión completada")}
         </h2>
         <p className="mt-2 text-sm text-[#66736B]">
           {result.amountLabel ?? (isTransfer ? "Enviaste" : "Recibiste")}
         </p>
         <p className="mt-1 text-3xl font-semibold text-[#0E7C4F]">
-          {result.receivedCopm} pesos
+          {result.receivedCopm} {isSell ? "USDT" : "pesos"}
         </p>
-        <p className="mt-1 text-xs text-[#66736B]">Equivalente en COPm onchain</p>
+        <p className="mt-1 text-xs text-[#66736B]">
+          {isSell ? "USDT recibido en tu wallet" : "Equivalente en COPm onchain"}
+        </p>
         {result.shortfallMessage && (
           <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
             {result.shortfallMessage}
@@ -3680,7 +3713,7 @@ function SwapSuccessModal({
               <p className="font-semibold">{formattedDate}</p>
             </div>
           )}
-          {!isTransfer && (
+          {!isTransfer && !isSell && (
             <div>
               <p className="text-xs text-[#66736B]">Balance final</p>
               <p className="font-semibold">
@@ -3704,13 +3737,15 @@ function SwapSuccessModal({
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-2">
-          <Button
-            className="col-span-2 h-11 rounded-[8px] bg-[#6D45B8] text-white hover:bg-[#56359A]"
-            disabled={sharingReceipt}
-            onClick={() => void sendReceipt()}
-          >
-            {sharingReceipt ? "Generando comprobante..." : "Enviar comprobante"}
-          </Button>
+          {!isSell && (
+            <Button
+              className="col-span-2 h-11 rounded-[8px] bg-[#6D45B8] text-white hover:bg-[#56359A]"
+              disabled={sharingReceipt}
+              onClick={() => void sendReceipt()}
+            >
+              {sharingReceipt ? "Generando comprobante..." : "Enviar comprobante"}
+            </Button>
+          )}
           <Button
             variant="outline"
             className="col-span-2 h-11 rounded-[8px] border-[#DDE4DC]"
