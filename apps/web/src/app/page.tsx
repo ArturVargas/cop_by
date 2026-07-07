@@ -77,7 +77,15 @@ import {
   type ShareableReceiptData,
 } from "@/components/shareable-receipt";
 import {
+  fetchUserActivity,
+  formatActivityDate,
+  getActivityStatusLabel,
+  getActivityStatusTone,
+  type ActivityItem,
+} from "@/lib/activity";
+import {
   getSavedRecipients,
+  getRecipientAlias,
   MAX_SAVED_RECIPIENTS,
   removeSavedRecipient,
   saveSavedRecipient,
@@ -94,6 +102,7 @@ const MAX_COPM_AMOUNT = 10_000_000;
 const USD_PLAN_TOLERANCE = 0.001;
 const TOKEN_ORDER_STORAGE_KEY = "cop_by_token_order";
 const ACTION_MODE_STORAGE_KEY = "cop_by_action_mode";
+const COPM_ICON_URL = "https://app.mento.org/tokens/COPm.svg";
 const SQUID_CELO_APPROVAL_TARGET =
   "0xce16F69375520ab01377ce7B88f5BA8C48F8D666" as Address;
 
@@ -251,6 +260,13 @@ function formatCopPerUsd(value: number) {
   return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+function formatRateChange(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+  }).format(Math.abs(value));
 }
 
 function getRouteToAmount(routeResult: SquidRouteResult) {
@@ -1303,7 +1319,11 @@ export default function Home() {
         />
 
         {homePanel === "activity" ? (
-          <ActivityPanel onClose={() => setHomePanel(null)} />
+          <ActivityPanel
+            explorerUrl={targetNetwork.blockExplorerUrl}
+            userAddress={portfolio.address}
+            onClose={() => setHomePanel(null)}
+          />
         ) : homePanel === "details" ? (
           <DetailsPanel
             approvalUsd={purchasePreview.activationCapUsd}
@@ -1311,6 +1331,7 @@ export default function Home() {
             balanceUsd={copmBalanceUsd}
             tokens={tokens}
             onClose={() => setHomePanel(null)}
+            onReorder={reorderToken}
             onSpend={() => undefined}
             onTransfer={() => handleActionModeChange("transfer")}
           />
@@ -1322,48 +1343,52 @@ export default function Home() {
             onClose={() => setHomePanel(null)}
           />
         ) : actionMode === "transfer" ? (
-          <TransferCopmScreen
-            amount={transferAmount}
-            balance={copmBalance}
-            confirming={transferConfirming}
-            error={transferError}
-            hasCopmBalance={hasCopmBalance}
-            recipientAddress={recipientAddress}
-            savedRecipients={savedRecipients}
-            status={transferStatus}
-            tokenDecimals={copmToken.decimals}
-            onAmountChange={(value) => {
-              setTransferAmount(cleanCopInput(value));
-              setTransferConfirming(false);
-              setTransferError(null);
-            }}
-            onGetPesos={() => handleActionModeChange("buy")}
-                onMax={() => {
-                  if (copmBalance !== undefined) {
-                    setTransferAmount(
-                      formatPesoAmountFromBigInt(copmBalance, copmToken.decimals)
-                    );
-                    setTransferConfirming(false);
-                  }
-                }}
-            onRecipientAddressChange={(value) => {
-              updateRecipientAddress(value);
-              setTransferConfirming(false);
-            }}
-            onRecipientSaved={() => refreshSavedRecipients()}
-            onRemoveRecipient={handleRemoveRecipient}
-            onSaveRecipient={handleSaveRecipient}
-            onSend={sendCopmTransfer}
-          />
+          <>
+            <button
+              type="button"
+              onClick={() => handleActionModeChange("buy")}
+              className="mb-3 inline-flex w-fit items-center gap-1 rounded-full bg-white px-3 py-2 text-sm font-semibold text-[#66736B] shadow-sm"
+            >
+              <ChevronRight className="h-4 w-4 rotate-180" />
+              Volver
+            </button>
+            <TransferCopmScreen
+              amount={transferAmount}
+              balance={copmBalance}
+              confirming={transferConfirming}
+              error={transferError}
+              hasCopmBalance={hasCopmBalance}
+              recipientAddress={recipientAddress}
+              savedRecipients={savedRecipients}
+              status={transferStatus}
+              tokenDecimals={copmToken.decimals}
+              onAmountChange={(value) => {
+                setTransferAmount(cleanCopInput(value));
+                setTransferConfirming(false);
+                setTransferError(null);
+              }}
+              onGetPesos={() => handleActionModeChange("buy")}
+              onMax={() => {
+                if (copmBalance !== undefined) {
+                  setTransferAmount(
+                    formatPesoAmountFromBigInt(copmBalance, copmToken.decimals)
+                  );
+                  setTransferConfirming(false);
+                }
+              }}
+              onRecipientAddressChange={(value) => {
+                updateRecipientAddress(value);
+                setTransferConfirming(false);
+              }}
+              onRecipientSaved={() => refreshSavedRecipients()}
+              onRemoveRecipient={handleRemoveRecipient}
+              onSaveRecipient={handleSaveRecipient}
+              onSend={sendCopmTransfer}
+            />
+          </>
         ) : (
           <>
             <BuySellTabs />
-            <CopmBalanceCard
-              balanceCopm={copmBalanceLabel}
-              balanceUsd={copmBalanceUsd}
-              copPerUsd={copPerUsd}
-              onClick={() => setHomePanel("chart")}
-            />
             {step === 0 ? (
               <TokenOrderScreen
                 tokens={tokens}
@@ -1391,6 +1416,7 @@ export default function Home() {
             ) : (
               <BuyCopmScreen
                 copAmount={copAmount}
+                copRateChange={tokenPrices.COP_PER_USD_24H_CHANGE}
                 copPerUsd={copPerUsd}
                 hasCompatibleTokens={hasCompatibleTokens}
                 isLive={isLivePortfolio}
@@ -1929,39 +1955,6 @@ function BuySellTabs() {
   );
 }
 
-function CopmBalanceCard({
-  balanceCopm,
-  balanceUsd,
-  copPerUsd,
-  onClick,
-}: {
-  balanceCopm: string;
-  balanceUsd: number;
-  copPerUsd: number;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="mb-3 w-full rounded-[8px] border border-[#D9CCF7] bg-white p-4 text-left shadow-sm"
-    >
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-sm font-medium text-[#66736B]">Tu balance</p>
-          <p className="mt-1 text-2xl font-semibold">{balanceCopm} pesos</p>
-          <p className="mt-1 text-sm font-medium text-[#66736B]">
-            {formatUsd(balanceUsd)} USD aprox.
-          </p>
-        </div>
-        <span className="rounded-full bg-[#F2ECFF] px-3 py-1 text-xs font-semibold text-[#6D45B8]">
-          1 USD = {formatCopPerUsd(copPerUsd)}
-        </span>
-      </div>
-    </button>
-  );
-}
-
 function PanelShell({
   children,
   onClose,
@@ -1989,15 +1982,138 @@ function PanelShell({
   );
 }
 
-function ActivityPanel({ onClose }: { onClose: () => void }) {
+function formatActivityRecipient(address: string | null) {
+  if (!address) return "tu wallet";
+  const alias = getRecipientAlias(address);
+  if (alias) return `${alias} (${formatAddressPreview(address)})`;
+  return formatAddressPreview(address);
+}
+
+function ActivityPanel({
+  explorerUrl,
+  onClose,
+  userAddress,
+}: {
+  explorerUrl: string;
+  onClose: () => void;
+  userAddress?: Address;
+}) {
+  const [items, setItems] = useState<ActivityItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!userAddress) {
+      setItems([]);
+      return;
+    }
+
+    let cancelled = false;
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+    setLoading(true);
+    setError(null);
+
+    fetchUserActivity(userAddress, 30)
+      .then((nextItems) => {
+        if (cancelled) return;
+        setItems(
+          nextItems.filter(
+            (item) => new Date(item.createdAt).getTime() >= sevenDaysAgo
+          )
+        );
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setError("No pudimos cargar tu actividad.");
+        setItems([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userAddress]);
+
   return (
     <PanelShell title="Actividad" onClose={onClose}>
-      <p className="py-12 text-center text-sm font-medium text-[#66736B]">
-        Tu actividad aparecerá aquí.
-      </p>
+      {!userAddress ? (
+        <p className="py-12 text-center text-sm font-medium text-[#66736B]">
+          Conecta tu wallet para ver tu actividad.
+        </p>
+      ) : loading ? (
+        <div className="space-y-2">
+          {[0, 1, 2].map((item) => (
+            <div
+              key={item}
+              className="h-24 animate-pulse rounded-[8px] bg-[#F7F8F5]"
+            />
+          ))}
+        </div>
+      ) : error ? (
+        <p className="py-12 text-center text-sm font-medium text-[#8A1F1F]">
+          {error}
+        </p>
+      ) : items.length === 0 ? (
+        <p className="py-12 text-center text-sm font-medium text-[#66736B]">
+          No hay actividad en los últimos 7 días.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {items.map((item) => {
+            const isSwap = item.type === "swap";
+            const title = isSwap ? "Obtuviste pesos" : "Enviaste pesos";
+            const statusLabel = getActivityStatusLabel(item.status, item.error);
+            const statusTone = getActivityStatusTone(item.status, item.error);
+
+            return (
+              <div
+                key={`${item.type}-${item.id}`}
+                className="rounded-[8px] border border-[#DDE4DC] bg-[#F7F8F5] p-3"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-[#17211B]">
+                      {title}
+                    </p>
+                    <p className="mt-1 text-xs text-[#66736B]">
+                      {isSwap ? "Destino" : "A"}{" "}
+                      {formatActivityRecipient(item.recipientAddress)}
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusTone}`}
+                  >
+                    {statusLabel}
+                  </span>
+                </div>
+                <p className="mt-3 text-lg font-semibold text-[#0E7C4F]">
+                  {isSwap ? "+" : "-"}
+                  {formatPesoAmountFromString(item.amount)} pesos
+                </p>
+                <div className="mt-1 flex items-center justify-between gap-3 text-xs text-[#66736B]">
+                  <span>{formatActivityDate(item.createdAt)}</span>
+                  {item.txHash ? (
+                    <a
+                      href={`${explorerUrl}/tx/${item.txHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold text-[#6D45B8] underline-offset-2 hover:underline"
+                    >
+                      Ver tx
+                    </a>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <Link
         href="/activity"
-        className="block h-11 rounded-[8px] bg-[#6D45B8] pt-3 text-center text-sm font-semibold text-white"
+        className="mt-4 block h-11 rounded-[8px] bg-[#6D45B8] pt-3 text-center text-sm font-semibold text-white"
       >
         Ver historial completo
       </Link>
@@ -2010,6 +2126,7 @@ function DetailsPanel({
   balanceCopm,
   balanceUsd,
   onClose,
+  onReorder,
   onSpend,
   onTransfer,
   tokens,
@@ -2018,18 +2135,141 @@ function DetailsPanel({
   balanceCopm: string;
   balanceUsd: number;
   onClose: () => void;
+  onReorder: (fromIndex: number, toIndex: number) => void;
   onSpend: () => void;
   onTransfer: () => void;
   tokens: PortfolioToken[];
 }) {
+  const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const draggingSymbolRef = useRef<string | null>(null);
+  const [draggingSymbol, setDraggingSymbol] = useState<string | null>(null);
+  const orderableTokenCount = tokens.filter((token) => tokenHasBalance(token)).length;
+  const isOrderableToken = (token: PortfolioToken) => tokenHasBalance(token);
+
+  const getTargetIndex = (clientY: number) => {
+    for (let index = 0; index < tokens.length; index += 1) {
+      if (!isOrderableToken(tokens[index])) continue;
+      const row = rowRefs.current[tokens[index].symbol];
+      if (!row) continue;
+
+      const rect = row.getBoundingClientRect();
+      if (clientY < rect.top + rect.height / 2) return index;
+    }
+
+    for (let index = tokens.length - 1; index >= 0; index -= 1) {
+      if (isOrderableToken(tokens[index])) return index;
+    }
+
+    return -1;
+  };
+
+  const getNextOrderableIndex = (index: number, direction: -1 | 1) => {
+    for (
+      let nextIndex = index + direction;
+      nextIndex >= 0 && nextIndex < tokens.length;
+      nextIndex += direction
+    ) {
+      if (isOrderableToken(tokens[nextIndex])) return nextIndex;
+    }
+
+    return -1;
+  };
+
+  const startDrag = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    symbol: string
+  ) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    draggingSymbolRef.current = symbol;
+    setDraggingSymbol(symbol);
+  };
+
+  const startTouchDrag = (
+    event: ReactTouchEvent<HTMLButtonElement>,
+    symbol: string
+  ) => {
+    event.preventDefault();
+    draggingSymbolRef.current = symbol;
+    setDraggingSymbol(symbol);
+  };
+
+  const endDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    draggingSymbolRef.current = null;
+    setDraggingSymbol(null);
+  };
+
+  const endTouchDrag = () => {
+    draggingSymbolRef.current = null;
+    setDraggingSymbol(null);
+  };
+
+  useEffect(() => {
+    if (!draggingSymbol) return;
+
+    const moveDragTo = (clientY: number) => {
+      const symbol = draggingSymbolRef.current;
+      if (!symbol) return;
+
+      const fromIndex = tokens.findIndex((token) => token.symbol === symbol);
+      const toIndex = getTargetIndex(clientY);
+      if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return;
+      onReorder(fromIndex, toIndex);
+    };
+
+    const movePointerDrag = (event: PointerEvent) => {
+      moveDragTo(event.clientY);
+    };
+
+    const moveTouchDrag = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (!touch) return;
+      event.preventDefault();
+      moveDragTo(touch.clientY);
+    };
+
+    const cancelDrag = () => {
+      draggingSymbolRef.current = null;
+      setDraggingSymbol(null);
+    };
+
+    window.addEventListener("pointermove", movePointerDrag);
+    window.addEventListener("pointerup", cancelDrag);
+    window.addEventListener("pointercancel", cancelDrag);
+    window.addEventListener("touchmove", moveTouchDrag, { passive: false });
+    window.addEventListener("touchend", cancelDrag);
+    window.addEventListener("touchcancel", cancelDrag);
+
+    return () => {
+      window.removeEventListener("pointermove", movePointerDrag);
+      window.removeEventListener("pointerup", cancelDrag);
+      window.removeEventListener("pointercancel", cancelDrag);
+      window.removeEventListener("touchmove", moveTouchDrag);
+      window.removeEventListener("touchend", cancelDrag);
+      window.removeEventListener("touchcancel", cancelDrag);
+    };
+  }, [draggingSymbol, onReorder, tokens]);
+
   return (
     <PanelShell title="Detalles" onClose={onClose}>
-      <div className="rounded-[8px] bg-[#F7F8F5] p-3">
-        <p className="text-xs font-medium text-[#66736B]">Balance COPm</p>
-        <p className="mt-1 text-xl font-semibold">{balanceCopm} pesos</p>
-        <p className="text-sm font-medium text-[#66736B]">
-          {formatUsd(balanceUsd)} USD aprox.
-        </p>
+      <div className="flex items-center gap-3 rounded-[8px] border border-[#DDD2F3] bg-[#F2ECFF] p-3 text-[#6D45B8]">
+        <img
+          src={COPM_ICON_URL}
+          alt="COPm"
+          className="h-10 w-10 shrink-0 rounded-full"
+        />
+        <div className="min-w-0">
+          <p className="text-xs font-semibold">Balance COPm</p>
+          <p className="mt-1 text-xl font-semibold text-[#17211B]">
+            {balanceCopm} pesos
+          </p>
+          <p className="text-sm font-medium text-[#6D45B8]">
+            {formatUsd(balanceUsd)} USD aprox.
+          </p>
+        </div>
       </div>
 
       <div className="mt-4">
@@ -2037,17 +2277,60 @@ function DetailsPanel({
           Prioridad de gasto
         </p>
         <div className="space-y-2">
-          {tokens.map((token, index) => (
-            <div
-              key={token.symbol}
-              className="flex items-center justify-between rounded-[8px] bg-[#F7F8F5] px-3 py-2 text-sm"
-            >
-              <span className="font-semibold">
-                {index + 1}. {token.symbol}
-              </span>
-              <span className="text-[#66736B]">{token.balanceDisplay ?? formatUsd(token.balanceUsd)}</span>
-            </div>
-          ))}
+          {tokens.map((token, index) => {
+            const hasBalance = tokenHasBalance(token);
+            const canReorder = hasBalance && orderableTokenCount > 1;
+            const previousOrderableIndex = getNextOrderableIndex(index, -1);
+            const nextOrderableIndex = getNextOrderableIndex(index, 1);
+
+            return (
+              <div
+                key={token.symbol}
+                ref={(element) => {
+                  rowRefs.current[token.symbol] = element;
+                }}
+                className={`flex min-h-[58px] items-center gap-2 rounded-[8px] bg-[#F7F8F5] px-3 py-2 text-sm transition ${
+                  draggingSymbol === token.symbol ? "scale-[0.99] shadow-sm" : ""
+                } ${hasBalance ? "" : "opacity-45"}`}
+              >
+                <button
+                  type="button"
+                  aria-label={`Arrastrar ${token.symbol}`}
+                  disabled={!canReorder}
+                  className="touch-none rounded-full p-1 text-[#9AA69D] enabled:cursor-grab enabled:active:cursor-grabbing enabled:active:text-[#6D45B8] disabled:cursor-not-allowed disabled:opacity-40"
+                  onPointerDown={(event) => startDrag(event, token.symbol)}
+                  onPointerUp={endDrag}
+                  onPointerCancel={endDrag}
+                  onTouchStart={(event) => startTouchDrag(event, token.symbol)}
+                  onTouchEnd={endTouchDrag}
+                  onTouchCancel={endTouchDrag}
+                >
+                  <GripVertical className="h-5 w-5" />
+                </button>
+                <TokenMark token={token} />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold">{token.symbol}</p>
+                  <p className="truncate text-xs text-[#66736B]">
+                    {token.balanceDisplay ?? formatUsd(token.balanceUsd)}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <MoveButton
+                    label={`Subir ${token.symbol}`}
+                    disabled={!canReorder || previousOrderableIndex === -1}
+                    onClick={() => onReorder(index, previousOrderableIndex)}
+                    direction="up"
+                  />
+                  <MoveButton
+                    label={`Bajar ${token.symbol}`}
+                    disabled={!canReorder || nextOrderableIndex === -1}
+                    onClick={() => onReorder(index, nextOrderableIndex)}
+                    direction="down"
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -2144,6 +2427,7 @@ function ActionModeTabs({
 
 function BuyCopmScreen({
   copAmount,
+  copRateChange,
   copPerUsd,
   hasCompatibleTokens,
   isLive,
@@ -2173,6 +2457,7 @@ function BuyCopmScreen({
   onRecipientModeChange,
 }: {
   copAmount: string;
+  copRateChange?: number;
   copPerUsd: number;
   hasCompatibleTokens: boolean;
   isLive: boolean;
@@ -2266,6 +2551,10 @@ function BuyCopmScreen({
       : swapProgress === "quoting"
         ? "Estamos buscando la mejor ruta disponible."
         : null;
+  const copVsUsdChange =
+    typeof copRateChange === "number" && Number.isFinite(copRateChange)
+      ? -copRateChange
+      : null;
 
   return (
     <div className="flex flex-1 flex-col">
@@ -2275,6 +2564,22 @@ function BuyCopmScreen({
           {formatUsd(totalUsd)}{" "}
           <span className="text-sm font-medium text-[#66736B]">aprox.</span>
         </p>
+        <div className="mt-3 flex items-center justify-between gap-3 text-xs font-semibold text-[#66736B]">
+          <span>Tipo de cambio</span>
+          <span className="flex items-center gap-2">
+            1 USD = {formatCopPerUsd(copPerUsd)} COPm
+            {copVsUsdChange !== null && Math.abs(copVsUsdChange) > 0.001 ? (
+              <span
+                className={
+                  copVsUsdChange > 0 ? "text-[#0E7C4F]" : "text-[#B42318]"
+                }
+              >
+                {copVsUsdChange > 0 ? "▲" : "▼"}{" "}
+                {formatRateChange(copVsUsdChange)}% 24h
+              </span>
+            ) : null}
+          </span>
+        </div>
       </div>
 
       <div className="mt-3 rounded-[8px] border border-[#DDE4DC] bg-white p-4">

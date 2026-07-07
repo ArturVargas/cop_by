@@ -6,7 +6,6 @@ import { OPEN_ONBOARDING_EVENT } from "@/components/onboarding-screen";
 import {
   AddressBadge,
   ConnectButton,
-  CopmBalanceBadge,
 } from "@/components/connect-button";
 import { useWalletAdapter } from "@/hooks/use-wallet-adapter";
 
@@ -38,7 +37,6 @@ export function Navbar() {
         <div className="flex items-center gap-2">
           {isMiniPay ? (
             <>
-              <CopmBalanceBadge />
               <AddressBadge />
               <span className="inline-flex h-8 items-center rounded-full border border-[#DDE4DC] bg-white px-2.5 text-[11px] font-semibold text-[#66736B]">
                 {networkName}
