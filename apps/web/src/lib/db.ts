@@ -53,3 +53,25 @@ export async function ensureTransferTable() {
     )
   `;
 }
+
+export async function ensureSpendOrderTable() {
+  await getSql()`
+    CREATE TABLE IF NOT EXISTS spend_orders (
+      order_id TEXT PRIMARY KEY,
+      user_address TEXT NOT NULL,
+      chain_id INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      product_type TEXT NOT NULL,
+      category TEXT,
+      provider TEXT NOT NULL,
+      amount_copm TEXT NOT NULL,
+      phone TEXT,
+      email TEXT NOT NULL,
+      payment_address TEXT NOT NULL,
+      payment_tx_hash TEXT,
+      error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+}
