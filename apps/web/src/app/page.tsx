@@ -111,6 +111,11 @@ type SwapStatus = "idle" | "quoting" | "buying" | "complete" | "error";
 type SwapProgress = "idle" | "quoting" | "confirming" | "processing";
 type ActionMode = "buy" | "sell" | "transfer";
 type HomePanel = "activity" | "details" | "chart" | null;
+type RateChartInterval = "1h" | "1d" | "1w" | "1m" | "1y";
+type RateChartPoint = {
+  timestamp: number;
+  copPerUsd: number;
+};
 type SwapResult = {
   amountLabel?: string;
   completedAt?: string;
@@ -1404,13 +1409,14 @@ export default function Home() {
           ? formatUnits(receivedUsdt, usdtToken.decimals)
           : "No disponible"
       );
-      await updateSwapIntent(intentId, {
+      const sellIntentId = intentId;
+      await updateSwapIntent(sellIntentId, {
         outputAmount:
           receivedUsdt !== undefined
             ? formatUnits(receivedUsdt, usdtToken.decimals)
             : undefined,
         status: "confirmed",
-      });
+      }).then(() => logSwapOnchain(sellIntentId));
       setSwapResult({
         amountLabel: "Recibiste",
         completedAt: new Date().toISOString(),
@@ -1562,6 +1568,12 @@ export default function Home() {
             balanceCopm={copmBalanceLabel}
             balanceUsd={copmBalanceUsd}
             copPerUsd={copPerUsd}
+            copVsUsdChange={
+              typeof tokenPrices.COP_PER_USD_24H_CHANGE === "number" &&
+              Number.isFinite(tokenPrices.COP_PER_USD_24H_CHANGE)
+                ? -tokenPrices.COP_PER_USD_24H_CHANGE
+                : null
+            }
             onClose={() => setHomePanel(null)}
           />
         ) : actionMode === "transfer" ? (
@@ -2645,30 +2657,21 @@ function CopmChartPanel({
   balanceCopm,
   balanceUsd,
   copPerUsd,
+  copVsUsdChange,
   onClose,
 }: {
   balanceCopm: string;
   balanceUsd: number;
   copPerUsd: number;
+  copVsUsdChange: number | null;
   onClose: () => void;
 }) {
   return (
     <PanelShell title="COPm / USD" onClose={onClose}>
-      <p className="text-sm font-medium text-[#66736B]">Tipo de cambio</p>
-      <p className="mt-1 text-3xl font-semibold">
-        1 USD = {formatCopPerUsd(copPerUsd)} COPm
-      </p>
-      <div className="mt-5 h-40 rounded-[8px] bg-[#17211B] p-4">
-        <svg viewBox="0 0 320 120" className="h-full w-full">
-          <path
-            d="M0 82 C30 64, 45 74, 70 54 S115 28, 145 58 S190 98, 220 72 S265 36, 320 50"
-            fill="none"
-            stroke="#6D45B8"
-            strokeLinecap="round"
-            strokeWidth="6"
-          />
-        </svg>
-      </div>
+      <CompactCopmRateChart
+        copPerUsd={copPerUsd}
+        copVsUsdChange={copVsUsdChange}
+      />
       <div className="mt-4 rounded-[8px] bg-[#F7F8F5] p-3">
         <p className="text-xs font-medium text-[#66736B]">Mi balance</p>
         <p className="mt-1 text-xl font-semibold">{balanceCopm} COPm</p>
@@ -2716,9 +2719,7 @@ function ButtonSpinner() {
   );
 }
 
-type RateChartInterval = "1h" | "1d" | "1w" | "1m" | "1y";
-
-const rateChartIntervals: RateChartInterval[] = ["1h", "1d", "1w", "1m", "1y"];
+const rateChartIntervals: RateChartInterval[] = ["1w", "1m", "1y"];
 
 function getSparklinePoints(values: number[], width = 320, height = 88) {
   const min = Math.min(...values);
@@ -2744,26 +2745,8 @@ function buildSmoothSparklinePath(points: { x: number; y: number }[]) {
   }, "");
 }
 
-function getRateChartValues(
-  interval: RateChartInterval,
-  copPerUsd: number,
-  copVsUsdChange: number | null
-) {
-  const shapes: Record<RateChartInterval, number[]> = {
-    "1h": [0.36, 0.4, 0.34, 0.46, 0.42, 0.55, 0.48, 0.58, 0.52, 0.62],
-    "1d": [0.3, 0.28, 0.36, 0.33, 0.48, 0.44, 0.57, 0.5, 0.64, 0.6],
-    "1w": [0.28, 0.42, 0.35, 0.5, 0.46, 0.64, 0.56, 0.72, 0.68, 0.78],
-    "1m": [0.62, 0.55, 0.58, 0.48, 0.5, 0.42, 0.46, 0.36, 0.4, 0.34],
-    "1y": [0.26, 0.38, 0.34, 0.48, 0.44, 0.62, 0.54, 0.74, 0.66, 0.82],
-  };
-  const trend = (copVsUsdChange ?? 0) / 100;
-
-  return shapes[interval].map((point, index, points) => {
-    const progress = index / Math.max(points.length - 1, 1);
-    const wave = (point - 0.45) * 0.006;
-    const drift = trend * progress * 0.35;
-    return copPerUsd * (1 + wave - drift);
-  });
+function getFallbackRateChartValues(copPerUsd: number) {
+  return Array.from({ length: 8 }, () => copPerUsd);
 }
 
 function getCopChangeFromUsdCopValues(values: number[]) {
@@ -2781,14 +2764,71 @@ function CompactCopmRateChart({
   copPerUsd: number;
   copVsUsdChange: number | null;
 }) {
-  const [interval, setInterval] = useState<RateChartInterval>("1d");
-  const values = getRateChartValues(interval, copPerUsd, copVsUsdChange);
+  const [interval, setInterval] = useState<RateChartInterval>("1w");
+  const [historyByInterval, setHistoryByInterval] = useState<
+    Partial<Record<RateChartInterval, RateChartPoint[]>>
+  >({});
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState(false);
+  const historyPoints = historyByInterval[interval];
+  const rawValues = historyPoints?.length
+    ? historyPoints.map((point) => point.copPerUsd)
+    : getFallbackRateChartValues(copPerUsd);
+  const values =
+    rawValues.length >= 2 ? rawValues : getFallbackRateChartValues(copPerUsd);
   const points = getSparklinePoints(values);
   const linePath = buildSmoothSparklinePath(points);
-  const areaPath = `${linePath} L 320 92 L 0 92 Z`;
-  const intervalChange = getCopChangeFromUsdCopValues(values);
+  const areaPath = linePath ? `${linePath} L 320 92 L 0 92 Z` : "";
+  const intervalChange = historyPoints && historyPoints.length >= 2
+    ? getCopChangeFromUsdCopValues(values)
+      : copVsUsdChange ?? 0;
   const isUp = intervalChange >= 0;
   const strokeColor = isUp ? "#0E7C4F" : "#B42318";
+
+  useEffect(() => {
+    if (historyByInterval[interval]) return;
+
+    let cancelled = false;
+    setIsLoadingHistory(true);
+    setHistoryError(false);
+
+    fetch(`/api/copm-rate-history?interval=${interval}`)
+      .then((response) => (response.ok ? response.json() : undefined))
+      .then(
+        (
+          data:
+            | {
+                points?: RateChartPoint[];
+              }
+            | undefined
+        ) => {
+          if (cancelled) return;
+          const nextPoints = (data?.points ?? []).filter(
+            (point) =>
+              Number.isFinite(point.timestamp) &&
+              Number.isFinite(point.copPerUsd)
+          );
+          if (!nextPoints.length) {
+            setHistoryError(true);
+            return;
+          }
+          setHistoryByInterval((current) => ({
+            ...current,
+            [interval]: nextPoints,
+          }));
+        }
+      )
+      .catch(() => {
+        if (!cancelled) setHistoryError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingHistory(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [historyByInterval, interval]);
 
   return (
     <div className="mb-3 rounded-[8px] border border-[#DDE4DC] bg-white p-4">
@@ -2806,6 +2846,10 @@ function CompactCopmRateChart({
             }`}
           >
             {isUp ? "▲" : "▼"} {formatRateChange(intervalChange)}% {interval}
+          </span>
+        ) : isLoadingHistory ? (
+          <span className="rounded-full bg-[#F7F8F5] px-2.5 py-1 text-xs font-semibold text-[#66736B]">
+            Cargando
           </span>
         ) : null}
       </div>
@@ -2829,19 +2873,21 @@ function CompactCopmRateChart({
             </feMerge>
           </filter>
         </defs>
-        <path d={areaPath} fill="url(#copm-rate-fill)" />
-        <path
-          d={linePath}
-          fill="none"
-          stroke={strokeColor}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="3"
-          filter="url(#copm-rate-glow)"
-        />
+        {areaPath ? <path d={areaPath} fill="url(#copm-rate-fill)" /> : null}
+        {linePath ? (
+          <path
+            d={linePath}
+            fill="none"
+            stroke={strokeColor}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="3"
+            filter="url(#copm-rate-glow)"
+          />
+        ) : null}
       </svg>
 
-      <div className="mt-3 grid grid-cols-5 gap-1 rounded-full bg-[#F7F8F5] p-1">
+      <div className="mt-3 grid grid-cols-3 gap-1 rounded-full bg-[#F7F8F5] p-1">
         {rateChartIntervals.map((item) => (
           <button
             key={item}
@@ -2857,6 +2903,11 @@ function CompactCopmRateChart({
           </button>
         ))}
       </div>
+      {historyError ? (
+        <p className="mt-2 text-xs font-medium text-[#66736B]">
+          No pudimos actualizar el histórico. Mostramos el tipo de cambio actual.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -3698,13 +3749,15 @@ function SwapSuccessModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/35 px-4 pb-4 sm:items-center sm:justify-center sm:pb-0">
-      <div
-        ref={receiptRef}
-        className="pointer-events-none fixed left-[-9999px] top-0"
-        aria-hidden
-      >
-        <ShareableReceipt data={shareableReceipt} />
-      </div>
+      {!isSell && (
+        <div
+          ref={receiptRef}
+          className="pointer-events-none fixed left-[-9999px] top-0"
+          aria-hidden
+        >
+          <ShareableReceipt data={shareableReceipt} />
+        </div>
+      )}
       <div className="w-full max-w-md rounded-[8px] bg-white p-4 shadow-xl">
         <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#E6F4EE] text-[#0E7C4F]">
           <Check className="h-5 w-5" />
