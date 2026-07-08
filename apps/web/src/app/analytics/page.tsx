@@ -56,6 +56,14 @@ function number(value: number, maximumFractionDigits = 0) {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(value);
 }
 
+function metricNumber(value: unknown) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value !== "string") return 0;
+  const normalized = value.replace(/,/g, "").trim();
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function percent(value: number) {
   return `${number(value, 1)}%`;
 }
@@ -78,7 +86,7 @@ function getVolumeUsd(rows: SwapRow[]) {
     (sum, row) =>
       sum +
       getTokensSpent(row).reduce(
-        (tokenSum, token) => tokenSum + Number(token.amountUsd ?? 0),
+        (tokenSum, token) => tokenSum + metricNumber(token.amountUsd),
         0
       ),
     0
@@ -117,12 +125,12 @@ function StatCard({
   sub?: string;
 }) {
   return (
-    <div className={`rounded-[8px] p-5 ${tone}`}>
-      <p className="text-xs font-bold uppercase text-[#808880]">{label}</p>
-      <p className="mt-4 text-4xl font-bold tracking-normal text-[#2B2D2F]">
+    <div className={`rounded-[8px] p-4 ${tone}`}>
+      <p className="text-[11px] font-bold uppercase text-[#808880]">{label}</p>
+      <p className="mt-3 text-2xl font-bold tracking-normal text-[#2B2D2F] sm:text-3xl">
         {value}
       </p>
-      {sub && <p className="mt-3 text-sm text-[#808880]">{sub}</p>}
+      {sub && <p className="mt-2 text-xs text-[#808880]">{sub}</p>}
     </div>
   );
 }
@@ -160,17 +168,17 @@ export default async function AnalyticsPage() {
   const volumeUsd = getVolumeUsd(completed);
   const buyVolumeUsd = getVolumeUsd(completedBuys);
   const sellVolumeUsd = getVolumeUsd(completedSells);
-  const feeUsd = completed.reduce((sum, row) => sum + Number(row.fee_usd ?? 0), 0);
+  const feeUsd = completed.reduce((sum, row) => sum + metricNumber(row.fee_usd), 0);
   const copmReceived = completedBuys.reduce(
-    (sum, row) => sum + Number(row.copm_received ?? 0),
+    (sum, row) => sum + metricNumber(row.copm_received),
     0
   );
   const copmSold = completedSells.reduce(
-    (sum, row) => sum + Number(row.requested_copm ?? 0),
+    (sum, row) => sum + metricNumber(row.requested_copm),
     0
   );
   const usdtReceived = completedSells.reduce(
-    (sum, row) => sum + Number(row.output_amount ?? 0),
+    (sum, row) => sum + metricNumber(row.output_amount),
     0
   );
   const multiToken = completed.filter((row) => getTokensSpent(row).length > 1).length;
@@ -179,7 +187,7 @@ export default async function AnalyticsPage() {
     0
   );
   const transferVolume = completedTransfers.reduce(
-    (sum, row) => sum + Number(row.copm_amount ?? 0),
+    (sum, row) => sum + metricNumber(row.copm_amount),
     0
   );
   const tokenTable = Object.entries(
@@ -188,7 +196,7 @@ export default async function AnalyticsPage() {
         if (!token.symbol) return;
         acc[token.symbol] ??= { count: 0, usd: 0 };
         acc[token.symbol].count += 1;
-        acc[token.symbol].usd += Number(token.amountUsd ?? 0);
+        acc[token.symbol].usd += metricNumber(token.amountUsd);
       });
       return acc;
     }, {})
@@ -203,7 +211,7 @@ export default async function AnalyticsPage() {
   ];
 
   return (
-    <main className="min-h-screen bg-[#FAFAF8] px-5 py-8 text-[#2B2D2F]">
+    <main className="min-h-screen bg-[#FAFAF8] px-5 py-6 text-[#2B2D2F]">
       <div className="mx-auto max-w-6xl">
         <Link
           href="/"
@@ -211,14 +219,14 @@ export default async function AnalyticsPage() {
         >
           ← Back
         </Link>
-        <h1 className="mt-6 text-5xl font-black uppercase leading-none">Stats</h1>
-        <p className="mt-5 font-mono text-lg text-[#808880]">
+        <h1 className="mt-5 text-4xl font-black uppercase leading-none">Stats</h1>
+        <p className="mt-3 font-mono text-sm text-[#808880]">
           Live · refresh to update
         </p>
 
-        <section className="mt-16">
-          <h2 className="text-3xl font-black uppercase">Today</h2>
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
+        <section className="mt-10">
+          <h2 className="text-2xl font-black uppercase">Today</h2>
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
             <StatCard
               label="Swaps today"
               tone="bg-[#E1F1EA]"
@@ -235,15 +243,15 @@ export default async function AnalyticsPage() {
               label="Fees today"
               tone="bg-[#FBE6E8]"
               value={money(
-                todayRows.reduce((sum, row) => sum + Number(row.fee_usd ?? 0), 0)
+                todayRows.reduce((sum, row) => sum + metricNumber(row.fee_usd), 0)
               )}
             />
           </div>
         </section>
 
-        <section className="mt-16">
-          <h2 className="text-3xl font-black uppercase">Economy</h2>
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
+        <section className="mt-10">
+          <h2 className="text-2xl font-black uppercase">Economy</h2>
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
             <StatCard
               label="Volume"
               tone="bg-[#E1F1EA]"
@@ -271,9 +279,9 @@ export default async function AnalyticsPage() {
           </div>
         </section>
 
-        <section className="mt-16">
-          <h2 className="text-3xl font-black uppercase">On-chain</h2>
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
+        <section className="mt-10">
+          <h2 className="text-2xl font-black uppercase">On-chain</h2>
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
             <StatCard
               label="Completed swaps"
               tone="bg-[#E1F1EA]"
@@ -313,9 +321,9 @@ export default async function AnalyticsPage() {
           </div>
         </section>
 
-        <section className="mt-16">
-          <h2 className="text-3xl font-black uppercase">Transfers</h2>
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
+        <section className="mt-10">
+          <h2 className="text-2xl font-black uppercase">Transfers</h2>
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
             <StatCard
               label="Completed transfers"
               tone="bg-[#E1F1EA]"
@@ -336,9 +344,9 @@ export default async function AnalyticsPage() {
           </div>
         </section>
 
-        <section className="mt-16 rounded-[8px] border border-[#E6E6E2] bg-white p-7">
-          <h2 className="text-2xl font-black uppercase">Transactions by token</h2>
-          <div className="mt-8 overflow-x-auto">
+        <section className="mt-10 rounded-[8px] border border-[#E6E6E2] bg-white p-5">
+          <h2 className="text-xl font-black uppercase">Transactions by token</h2>
+          <div className="mt-5 overflow-x-auto">
             <table className="w-full text-left">
               <thead className="border-b border-[#ECECE8] text-xs uppercase text-[#808880]">
                 <tr>
@@ -351,7 +359,7 @@ export default async function AnalyticsPage() {
               <tbody>
                 {tokenTable.map(([symbol, token]) => (
                   <tr key={symbol} className="border-b border-[#F0F0EC]">
-                    <td className="py-4 text-lg">{symbol}</td>
+                    <td className="py-4 text-base">{symbol}</td>
                     <td className="py-4 text-right">{number(token.count)}</td>
                     <td className="py-4 text-right">{money(token.usd)}</td>
                     <td className="py-4 text-right text-[#808880]">
@@ -371,9 +379,9 @@ export default async function AnalyticsPage() {
           </div>
         </section>
 
-        <section className="mt-8 rounded-[8px] border border-[#E6E6E2] bg-white p-7">
-          <h2 className="text-2xl font-black uppercase">Contracts</h2>
-          <div className="mt-6 space-y-3">
+        <section className="mt-6 rounded-[8px] border border-[#E6E6E2] bg-white p-5">
+          <h2 className="text-xl font-black uppercase">Contracts</h2>
+          <div className="mt-5 space-y-3">
             {contracts.map(([label, address]) => (
               <div
                 key={label}
@@ -388,9 +396,9 @@ export default async function AnalyticsPage() {
           </div>
         </section>
 
-        <section className="mt-8 rounded-[8px] border border-[#E6E6E2] bg-white p-7">
-          <h2 className="text-2xl font-black uppercase">Recent swaps</h2>
-          <div className="mt-8 overflow-x-auto">
+        <section className="mt-6 rounded-[8px] border border-[#E6E6E2] bg-white p-5">
+          <h2 className="text-xl font-black uppercase">Recent swaps</h2>
+          <div className="mt-5 overflow-x-auto">
             <table className="w-full text-left">
               <thead className="border-b border-[#ECECE8] text-xs uppercase text-[#808880]">
                 <tr>
@@ -416,14 +424,14 @@ export default async function AnalyticsPage() {
                     <td className="py-4 text-right">
                       {row.swap_type === "sell"
                         ? row.output_amount
-                          ? `${number(Number(row.output_amount), 2)} ${row.output_token ?? "USDT"}`
+                          ? `${number(metricNumber(row.output_amount), 2)} ${row.output_token ?? "USDT"}`
                           : "-"
                         : row.copm_received
-                          ? `${number(Number(row.copm_received), 2)} COPm`
+                          ? `${number(metricNumber(row.copm_received), 2)} COPm`
                           : "-"}
                     </td>
                     <td className="py-4 text-right">
-                      {row.fee_usd ? money(Number(row.fee_usd)) : "-"}
+                      {row.fee_usd ? money(metricNumber(row.fee_usd)) : "-"}
                     </td>
                   </tr>
                 ))}
