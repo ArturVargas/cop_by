@@ -121,7 +121,7 @@ export default function ActivityPage() {
         </Link>
         <h1 className="mt-4 text-2xl font-bold">Mi actividad</h1>
         <p className="mt-1 text-sm text-[#66736B]">
-          Conversiones y envíos de pesos desde tu wallet.
+          Conversiones, ventas y envíos desde tu wallet.
         </p>
 
         {!isConnected || !address ? (
@@ -147,7 +147,7 @@ export default function ActivityPage() {
           </div>
         ) : items.length === 0 ? (
           <div className="mt-8 rounded-[8px] border border-[#DDE4DC] bg-white p-5 text-sm text-[#66736B]">
-            Aún no tienes operaciones. Convierte o envía pesos para verlas aquí.
+            Aún no tienes operaciones. Convierte, vende o envía para verlas aquí.
           </div>
         ) : (
           <div className="mt-6 space-y-3">
