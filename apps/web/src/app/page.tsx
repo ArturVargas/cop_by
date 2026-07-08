@@ -111,7 +111,8 @@ type SwapStatus = "idle" | "quoting" | "buying" | "complete" | "error";
 type SwapProgress = "idle" | "quoting" | "confirming" | "processing";
 type ActionMode = "buy" | "sell" | "transfer";
 type HomePanel = "activity" | "details" | "chart" | null;
-type RateChartInterval = "1h" | "1d" | "1w" | "1m" | "1y";
+type RateChartInterval = "1h" | "1d" | "1w" | "1m" | "1y" | "5y" | "max";
+type RateChartPair = "usd-cop" | "cop-usd";
 type RateChartPoint = {
   timestamp: number;
   copPerUsd: number;
@@ -281,6 +282,13 @@ function formatRateChange(value: number) {
     maximumFractionDigits: 2,
     minimumFractionDigits: 2,
   }).format(Math.abs(value));
+}
+
+function formatUsdPerCop(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 6,
+    minimumFractionDigits: 6,
+  }).format(value);
 }
 
 function getRouteToAmount(routeResult: SquidRouteResult) {
@@ -2667,7 +2675,7 @@ function CopmChartPanel({
   onClose: () => void;
 }) {
   return (
-    <PanelShell title="COPm / USD" onClose={onClose}>
+    <PanelShell title="USD/COP" onClose={onClose}>
       <CompactCopmRateChart
         copPerUsd={copPerUsd}
         copVsUsdChange={copVsUsdChange}
@@ -2719,16 +2727,16 @@ function ButtonSpinner() {
   );
 }
 
-const rateChartIntervals: RateChartInterval[] = ["1w", "1m", "1y"];
+const rateChartIntervals: RateChartInterval[] = ["1w", "1m", "1y", "5y", "max"];
 
-function getSparklinePoints(values: number[], width = 320, height = 88) {
+function getSparklinePoints(values: number[], width = 720, height = 132) {
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
 
   return values.map((value, index) => {
-    const x = (index / Math.max(values.length - 1, 1)) * width;
-    const y = 2 + height - ((value - min) / range) * height;
+    const x = 2 + (index / Math.max(values.length - 1, 1)) * (width - 4);
+    const y = 4 + height - ((value - min) / range) * height;
     return { x, y };
   });
 }
@@ -2749,12 +2757,17 @@ function getFallbackRateChartValues(copPerUsd: number) {
   return Array.from({ length: 8 }, () => copPerUsd);
 }
 
-function getCopChangeFromUsdCopValues(values: number[]) {
+function getPairRateValues(copPerUsdValues: number[], pair: RateChartPair) {
+  if (pair === "usd-cop") return copPerUsdValues;
+  return copPerUsdValues.map((value) => (value > 0 ? 1 / value : 0));
+}
+
+function getRateChange(values: number[]) {
   const first = values[0];
   const last = values[values.length - 1];
   if (!first || !last) return 0;
 
-  return ((first - last) / first) * 100;
+  return ((last - first) / first) * 100;
 }
 
 function CompactCopmRateChart({
@@ -2765,25 +2778,37 @@ function CompactCopmRateChart({
   copVsUsdChange: number | null;
 }) {
   const [interval, setInterval] = useState<RateChartInterval>("1w");
+  const [pair, setPair] = useState<RateChartPair>("cop-usd");
   const [historyByInterval, setHistoryByInterval] = useState<
     Partial<Record<RateChartInterval, RateChartPoint[]>>
   >({});
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [historyError, setHistoryError] = useState(false);
   const historyPoints = historyByInterval[interval];
-  const rawValues = historyPoints?.length
+  const rawCopPerUsdValues = historyPoints?.length
     ? historyPoints.map((point) => point.copPerUsd)
     : getFallbackRateChartValues(copPerUsd);
-  const values =
-    rawValues.length >= 2 ? rawValues : getFallbackRateChartValues(copPerUsd);
+  const copPerUsdValues =
+    rawCopPerUsdValues.length >= 2
+      ? rawCopPerUsdValues
+      : getFallbackRateChartValues(copPerUsd);
+  const values = getPairRateValues(copPerUsdValues, pair);
   const points = getSparklinePoints(values);
   const linePath = buildSmoothSparklinePath(points);
-  const areaPath = linePath ? `${linePath} L 320 92 L 0 92 Z` : "";
-  const intervalChange = historyPoints && historyPoints.length >= 2
-    ? getCopChangeFromUsdCopValues(values)
-      : copVsUsdChange ?? 0;
+  const areaPath = linePath ? `${linePath} L 720 140 L 0 140 Z` : "";
+  const fallbackChange =
+    pair === "usd-cop" ? -(copVsUsdChange ?? 0) : (copVsUsdChange ?? 0);
+  const intervalChange =
+    historyPoints && historyPoints.length >= 2
+      ? getRateChange(values)
+      : fallbackChange;
   const isUp = intervalChange >= 0;
   const strokeColor = isUp ? "#0E7C4F" : "#B42318";
+  const pairLabel = pair === "usd-cop" ? "USD/COP" : "COP/USD";
+  const pairRate =
+    pair === "usd-cop"
+      ? `1 USD = ${formatCopPerUsd(copPerUsd)} COP`
+      : `1 COP = ${formatUsdPerCop(1 / copPerUsd)} USD`;
 
   useEffect(() => {
     if (historyByInterval[interval]) return;
@@ -2834,9 +2859,27 @@ function CompactCopmRateChart({
     <div className="mb-3 rounded-[8px] border border-[#DDE4DC] bg-white p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-[#17211B]">COPm / USD</p>
+          <div className="inline-grid grid-cols-2 gap-1 rounded-full bg-[#F7F8F5] p-1">
+            {([
+              ["usd-cop", "USD/COP"],
+              ["cop-usd", "COP/USD"],
+            ] as const).map(([item, label]) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setPair(item)}
+                className={`h-7 rounded-full px-2.5 text-[11px] font-semibold ${
+                  pair === item
+                    ? "bg-[#E9DFFC] text-[#56359A]"
+                    : "text-[#66736B]"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <p className="mt-1 text-xs font-medium text-[#66736B]">
-            1 USD = {formatCopPerUsd(copPerUsd)} COPm
+            {pairRate}
           </p>
         </div>
         {Math.abs(intervalChange) > 0.001 ? (
@@ -2855,10 +2898,10 @@ function CompactCopmRateChart({
       </div>
 
       <svg
-        viewBox="0 0 320 92"
-        className="mt-3 h-24 w-full overflow-visible"
+        viewBox="0 0 720 140"
+        className="mt-3 h-36 w-full overflow-visible"
         role="img"
-        aria-label="Movimiento COPm contra USD"
+        aria-label={`Movimiento ${pairLabel}`}
       >
         <defs>
           <linearGradient id="copm-rate-fill" x1="0" x2="0" y1="0" y2="1">
@@ -2881,13 +2924,13 @@ function CompactCopmRateChart({
             stroke={strokeColor}
             strokeLinecap="round"
             strokeLinejoin="round"
-            strokeWidth="3"
+            strokeWidth="2.25"
             filter="url(#copm-rate-glow)"
           />
         ) : null}
       </svg>
 
-      <div className="mt-3 grid grid-cols-3 gap-1 rounded-full bg-[#F7F8F5] p-1">
+      <div className="mt-3 grid grid-cols-5 gap-1 rounded-full bg-[#F7F8F5] p-1">
         {rateChartIntervals.map((item) => (
           <button
             key={item}
@@ -2899,7 +2942,7 @@ function CompactCopmRateChart({
                 : "text-[#66736B]"
             }`}
           >
-            {item}
+            {item.toUpperCase()}
           </button>
         ))}
       </div>

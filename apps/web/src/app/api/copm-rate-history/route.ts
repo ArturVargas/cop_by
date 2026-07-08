@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const validIntervals = ["1h", "1d", "1w", "1m", "1y"] as const;
+const validIntervals = ["1h", "1d", "1w", "1m", "1y", "5y", "max"] as const;
 type RateInterval = (typeof validIntervals)[number];
 
 const intervalConfig: Record<
@@ -12,6 +12,8 @@ const intervalConfig: Record<
   "1w": { daysBack: 7, points: 8, revalidate: 60 * 60 },
   "1m": { daysBack: 30, points: 16, revalidate: 12 * 60 * 60 },
   "1y": { daysBack: 365, points: 24, revalidate: 24 * 60 * 60 },
+  "5y": { daysBack: 365 * 5, points: 36, revalidate: 24 * 60 * 60 },
+  max: { daysBack: 365 * 10, points: 48, revalidate: 24 * 60 * 60 },
 };
 
 function isRateInterval(value: string | null): value is RateInterval {
