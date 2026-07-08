@@ -7,8 +7,10 @@ type SwapLegLog = {
 export async function createSwapIntent(input: {
   chainId: number;
   intentId: string;
+  outputToken?: string;
   recipientAddress?: string;
   requestedCopm: string;
+  swapType?: "buy" | "sell";
   userAddress: string;
 }) {
   await fetch("/api/swaps", {
@@ -24,6 +26,7 @@ export async function updateSwapIntent(
     copmReceived?: string;
     error?: string;
     feeUsd?: string;
+    outputAmount?: string;
     squidRequestIds?: string[];
     status: string;
     swapTxHashes?: string[];

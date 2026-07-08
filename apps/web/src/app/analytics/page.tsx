@@ -13,9 +13,12 @@ type SwapRow = {
   fee_usd: string | null;
   intent_id: string;
   onchain_log_tx_hash: string | null;
+  output_amount: string | null;
+  output_token: string | null;
   requested_copm: string;
   squid_request_ids: unknown;
   status: string;
+  swap_type: string | null;
   swap_tx_hashes: unknown;
   tokens_spent: unknown;
   user_address: string;
@@ -135,6 +138,8 @@ export default async function AnalyticsPage() {
 
   const total = rows.length;
   const completed = rows.filter(isCompleted);
+  const completedBuys = completed.filter((row) => (row.swap_type ?? "buy") === "buy");
+  const completedSells = completed.filter((row) => row.swap_type === "sell");
   const completedTransfers = transfers.filter((row) =>
     ["confirmed", "logged"].includes(row.status)
   );
@@ -153,9 +158,19 @@ export default async function AnalyticsPage() {
   ).size;
   const users = new Set(completed.map((row) => row.user_address)).size;
   const volumeUsd = getVolumeUsd(completed);
+  const buyVolumeUsd = getVolumeUsd(completedBuys);
+  const sellVolumeUsd = getVolumeUsd(completedSells);
   const feeUsd = completed.reduce((sum, row) => sum + Number(row.fee_usd ?? 0), 0);
-  const copmReceived = completed.reduce(
+  const copmReceived = completedBuys.reduce(
     (sum, row) => sum + Number(row.copm_received ?? 0),
+    0
+  );
+  const copmSold = completedSells.reduce(
+    (sum, row) => sum + Number(row.requested_copm ?? 0),
+    0
+  );
+  const usdtReceived = completedSells.reduce(
+    (sum, row) => sum + Number(row.output_amount ?? 0),
     0
   );
   const multiToken = completed.filter((row) => getTokensSpent(row).length > 1).length;
@@ -233,7 +248,7 @@ export default async function AnalyticsPage() {
               label="Volume"
               tone="bg-[#E1F1EA]"
               value={money(volumeUsd)}
-              sub="token input"
+              sub={`${money(buyVolumeUsd)} buy · ${money(sellVolumeUsd)} sell`}
             />
             <StatCard
               label="Integrator fees"
@@ -245,7 +260,13 @@ export default async function AnalyticsPage() {
               label="COPm delivered"
               tone="bg-[#FFEAC8]"
               value={number(copmReceived, 2)}
-              sub="confirmed swaps"
+              sub="confirmed buys"
+            />
+            <StatCard
+              label="COPm sold"
+              tone="bg-[#EEF0FA]"
+              value={number(copmSold, 2)}
+              sub={`${number(usdtReceived, 2)} USDT received`}
             />
           </div>
         </section>
@@ -257,7 +278,7 @@ export default async function AnalyticsPage() {
               label="Completed swaps"
               tone="bg-[#E1F1EA]"
               value={number(completed.length)}
-              sub={`${number(total)} intents · ${number(users)} active addresses`}
+              sub={`${number(completedBuys.length)} buys · ${number(completedSells.length)} sells`}
             />
             <StatCard
               label="Swap txs"
@@ -374,6 +395,7 @@ export default async function AnalyticsPage() {
               <thead className="border-b border-[#ECECE8] text-xs uppercase text-[#808880]">
                 <tr>
                   <th className="py-3">User</th>
+                  <th className="py-3">Type</th>
                   <th className="py-3">Status</th>
                   <th className="py-3 text-right">Requested</th>
                   <th className="py-3 text-right">Received</th>
@@ -386,10 +408,19 @@ export default async function AnalyticsPage() {
                     <td className="py-4 font-mono text-sm">
                       {shortAddress(row.user_address)}
                     </td>
+                    <td className="py-4">{row.swap_type === "sell" ? "sell" : "buy"}</td>
                     <td className="py-4">confirmed</td>
-                    <td className="py-4 text-right">{row.requested_copm}</td>
                     <td className="py-4 text-right">
-                      {row.copm_received ? number(Number(row.copm_received), 2) : "-"}
+                      {row.requested_copm} COPm
+                    </td>
+                    <td className="py-4 text-right">
+                      {row.swap_type === "sell"
+                        ? row.output_amount
+                          ? `${number(Number(row.output_amount), 2)} ${row.output_token ?? "USDT"}`
+                          : "-"
+                        : row.copm_received
+                          ? `${number(Number(row.copm_received), 2)} COPm`
+                          : "-"}
                     </td>
                     <td className="py-4 text-right">
                       {row.fee_usd ? money(Number(row.fee_usd)) : "-"}

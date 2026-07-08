@@ -65,6 +65,32 @@ function formatTokensSpent(tokensSpent: unknown) {
     .join(",");
 }
 
+function getLoggedCopmAmount(swap: {
+  copm_received?: unknown;
+  requested_copm?: unknown;
+  swap_type?: unknown;
+}) {
+  const amount =
+    swap.swap_type === "sell" ? swap.requested_copm : swap.copm_received;
+  return parseUnits(String(amount ?? "0"), 18);
+}
+
+function formatSwapMemo(swap: {
+  output_amount?: unknown;
+  output_token?: unknown;
+  requested_copm?: unknown;
+  swap_type?: unknown;
+  tokens_spent?: unknown;
+}) {
+  if (swap.swap_type === "sell") {
+    return `sell:COPm:${String(swap.requested_copm ?? "0")}->${String(
+      swap.output_token ?? "USDT"
+    )}:${String(swap.output_amount ?? "0")}`;
+  }
+
+  return formatTokensSpent(swap.tokens_spent);
+}
+
 export async function POST(
   _request: Request,
   { params }: { params: { intentId: string } }
@@ -110,8 +136,8 @@ export async function POST(
         swap.user_address as Address,
         toBytes32(swap.intent_id),
         toBytes32(lastSwapHash),
-        parseUnits(String(swap.copm_received ?? "0"), 18),
-        formatTokensSpent(swap.tokens_spent),
+        getLoggedCopmAmount(swap),
+        formatSwapMemo(swap),
       ],
     });
     await publicClient.waitForTransactionReceipt({ hash });

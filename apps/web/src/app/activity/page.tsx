@@ -36,8 +36,9 @@ function ActivityCard({
   explorerUrl: string;
 }) {
   const isSwap = item.type === "swap";
-  const title = isSwap ? "Obtuviste pesos" : "Enviaste pesos";
-  const amountPrefix = isSwap ? "+" : "−";
+  const isSell = item.swapType === "sell";
+  const title = isSwap ? (isSell ? "Vendiste pesos" : "Obtuviste pesos") : "Enviaste pesos";
+  const amountPrefix = isSwap && !isSell ? "+" : "−";
   const statusLabel = getActivityStatusLabel(item.status, item.error);
   const statusTone = getActivityStatusTone(item.status, item.error);
 
@@ -47,7 +48,8 @@ function ActivityCard({
         <div>
           <p className="text-sm font-semibold text-[#17211B]">{title}</p>
           <p className="mt-1 text-xs text-[#66736B]">
-            {isSwap ? "Destino" : "A"} {formatRecipient(item.recipientAddress)}
+            {isSwap ? (isSell ? "Desde" : "Destino") : "A"}{" "}
+            {formatRecipient(item.recipientAddress)}
           </p>
         </div>
         <span
@@ -119,7 +121,7 @@ export default function ActivityPage() {
         </Link>
         <h1 className="mt-4 text-2xl font-bold">Mi actividad</h1>
         <p className="mt-1 text-sm text-[#66736B]">
-          Conversiones y envíos de pesos desde tu wallet.
+          Conversiones, ventas y envíos desde tu wallet.
         </p>
 
         {!isConnected || !address ? (
@@ -145,7 +147,7 @@ export default function ActivityPage() {
           </div>
         ) : items.length === 0 ? (
           <div className="mt-8 rounded-[8px] border border-[#DDE4DC] bg-white p-5 text-sm text-[#66736B]">
-            Aún no tienes operaciones. Convierte o envía pesos para verlas aquí.
+            Aún no tienes operaciones. Convierte, vende o envía para verlas aquí.
           </div>
         ) : (
           <div className="mt-6 space-y-3">

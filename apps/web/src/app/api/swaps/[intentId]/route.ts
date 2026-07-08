@@ -7,6 +7,7 @@ type UpdateSwapBody = {
   error?: string | null;
   feeUsd?: string;
   onchainLogTxHash?: string | null;
+  outputAmount?: string;
   squidRequestIds?: unknown[];
   status?: string;
   swapTxHashes?: string[];
@@ -33,6 +34,7 @@ export async function PATCH(
         squid_request_ids = COALESCE(${squidRequestIds}::jsonb, squid_request_ids),
         swap_tx_hashes = COALESCE(${swapTxHashes}::jsonb, swap_tx_hashes),
         copm_received = COALESCE(${body.copmReceived ?? null}, copm_received),
+        output_amount = COALESCE(${body.outputAmount ?? null}, output_amount),
         fee_usd = COALESCE(${body.feeUsd ?? null}, fee_usd),
         onchain_log_tx_hash = COALESCE(${body.onchainLogTxHash ?? null}, onchain_log_tx_hash),
         error = COALESCE(${body.error ?? null}, error),

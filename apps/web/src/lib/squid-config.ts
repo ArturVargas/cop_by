@@ -25,6 +25,12 @@ export type SquidRouteParams = {
   toToken: Address;
 };
 
+export type SquidRouteAttempt = {
+  params: SquidRouteParams;
+  requestId?: string;
+  errorMessage?: string;
+};
+
 type SquidRouteAction = {
   data?: {
     dex?: string;
@@ -60,23 +66,31 @@ export type SquidRouteResult = {
 };
 
 export class SquidApiError extends Error {
+  attempts?: SquidRouteAttempt[];
+  params?: SquidRouteParams;
   requestId?: string;
   status: number;
   type?: string;
 
   constructor({
+    attempts,
     message,
+    params,
     requestId,
     status,
     type,
   }: {
+    attempts?: SquidRouteAttempt[];
     message: string;
+    params?: SquidRouteParams;
     requestId?: string;
     status: number;
     type?: string;
   }) {
     super(message);
     this.name = "SquidApiError";
+    this.attempts = attempts;
+    this.params = params;
     this.requestId = requestId;
     this.status = status;
     this.type = type;
@@ -132,18 +146,78 @@ function isSquidLiquidityRouteError(error: unknown) {
   );
 }
 
+export function formatSquidErrorForSupport(error: SquidApiError) {
+  const attempts =
+    error.attempts ??
+    (error.params
+      ? [{ params: error.params, requestId: error.requestId, errorMessage: error.message }]
+      : []);
+
+  return JSON.stringify(
+    {
+      api: `${SQUID_API_BASE_URL}/v2/route`,
+      integratorId: getSquidIntegratorId() || "[missing NEXT_PUBLIC_SQUID_INTEGRATOR_ID]",
+      error: {
+        message: error.message,
+        status: error.status,
+        type: error.type,
+        requestId: error.requestId,
+      },
+      quoteAttempts: attempts.map((attempt) => ({
+        requestId: attempt.requestId,
+        params: attempt.params,
+        errorMessage: attempt.errorMessage,
+      })),
+    },
+    null,
+    2
+  );
+}
+
+function logSquidRouteFailure(params: SquidRouteParams, error: SquidApiError) {
+  console.error("[Squid route failed]", formatSquidErrorForSupport(error));
+}
+
 export async function getSquidCopmRoute(params: SquidRouteParams) {
   const preferredDexes = getSquidPreferredDexes();
+  const attempts: SquidRouteAttempt[] = [];
 
   if (preferredDexes.length) {
+    const preferredParams = { ...params, prefer: preferredDexes };
     try {
-      return await getSquidRoute({ ...params, prefer: preferredDexes });
+      return await getSquidRoute(preferredParams);
     } catch (error) {
-      if (!isSquidLiquidityRouteError(error)) throw error;
+      if (error instanceof SquidApiError) {
+        attempts.push({
+          params: preferredParams,
+          requestId: error.requestId,
+          errorMessage: error.message,
+        });
+        if (!isSquidLiquidityRouteError(error)) {
+          error.attempts = attempts;
+          logSquidRouteFailure(preferredParams, error);
+          throw error;
+        }
+      } else {
+        throw error;
+      }
     }
   }
 
-  return getSquidRoute(params);
+  try {
+    return await getSquidRoute(params);
+  } catch (error) {
+    if (error instanceof SquidApiError) {
+      attempts.push({
+        params,
+        requestId: error.requestId,
+        errorMessage: error.message,
+      });
+      error.attempts = attempts;
+      logSquidRouteFailure(params, error);
+    }
+    throw error;
+  }
 }
 
 export async function getSquidRoute(params: SquidRouteParams) {
@@ -174,12 +248,15 @@ export async function getSquidRoute(params: SquidRouteParams) {
     const payload = (await response?.json().catch(() => undefined)) as
       | { message?: string; type?: string }
       | undefined;
-    throw new SquidApiError({
+    const error = new SquidApiError({
       message: payload?.message ?? "Squid route unavailable",
+      params,
       requestId: response?.headers.get("x-request-id") ?? undefined,
       status: response?.status ?? 0,
       type: payload?.type,
     });
+    logSquidRouteFailure(params, error);
+    throw error;
   }
 
   const payload = (await response.json()) as { route?: SquidRoute };

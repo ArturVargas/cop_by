@@ -23,8 +23,10 @@ import {
   ChevronRight,
   ChevronUp,
   Bookmark,
+  Clock,
   Copy,
   GripVertical,
+  Menu,
   ShieldCheck,
   X,
 } from "lucide-react";
@@ -48,9 +50,12 @@ import {
 } from "@/lib/mock-portfolio";
 import { getTargetNetwork } from "@/lib/network-config";
 import {
+  formatSquidErrorForSupport,
   getSquidCopmRoute,
+  getSquidRoute,
   getSquidServiceFeeUsd,
   getSquidStatus,
+  SquidApiError,
   SQUID_INTEGRATOR_FEE_BPS,
   SQUID_INTEGRATOR_FEE_SPLIT,
   type SquidRouteResult,
@@ -73,7 +78,15 @@ import {
   type ShareableReceiptData,
 } from "@/components/shareable-receipt";
 import {
+  fetchUserActivity,
+  formatActivityDate,
+  getActivityStatusLabel,
+  getActivityStatusTone,
+  type ActivityItem,
+} from "@/lib/activity";
+import {
   getSavedRecipients,
+  getRecipientAlias,
   MAX_SAVED_RECIPIENTS,
   removeSavedRecipient,
   saveSavedRecipient,
@@ -90,12 +103,19 @@ const MAX_COPM_AMOUNT = 10_000_000;
 const USD_PLAN_TOLERANCE = 0.001;
 const TOKEN_ORDER_STORAGE_KEY = "cop_by_token_order";
 const ACTION_MODE_STORAGE_KEY = "cop_by_action_mode";
+const COPM_ICON_URL = "https://app.mento.org/tokens/COPm.svg";
 const SQUID_CELO_APPROVAL_TARGET =
   "0xce16F69375520ab01377ce7B88f5BA8C48F8D666" as Address;
 
 type SwapStatus = "idle" | "quoting" | "buying" | "complete" | "error";
 type SwapProgress = "idle" | "quoting" | "confirming" | "processing";
-type ActionMode = "buy" | "transfer";
+type ActionMode = "buy" | "sell" | "transfer";
+type HomePanel = "activity" | "details" | "chart" | null;
+type RateChartInterval = "1h" | "1d" | "1w" | "1m" | "1y";
+type RateChartPoint = {
+  timestamp: number;
+  copPerUsd: number;
+};
 type SwapResult = {
   amountLabel?: string;
   completedAt?: string;
@@ -107,7 +127,7 @@ type SwapResult = {
   title?: string;
   txHash: string;
   txUrl: string;
-  variant?: "swap" | "transfer";
+  variant?: "sell" | "swap" | "transfer";
 };
 type ShortfallQuote = {
   copAmount: string;
@@ -116,6 +136,14 @@ type ShortfallQuote = {
   message: string;
 };
 type TransferStatus = "idle" | "confirming" | "sending" | "complete" | "error";
+type SellStatus =
+  | "idle"
+  | "quoting"
+  | "approving"
+  | "confirming"
+  | "processing"
+  | "complete"
+  | "error";
 type SwapPlanLeg = {
   token: PortfolioToken;
   usdAmount: number;
@@ -162,6 +190,9 @@ function getFriendlyErrorMessage(error: unknown, context: "swap" | "transfer" = 
   }
 
   if (lowerMessage.includes("low liquidity")) {
+    if (error instanceof SquidApiError) {
+      console.error("[COP By Squid debug]", formatSquidErrorForSupport(error));
+    }
     return "No encontramos suficiente liquidez para comprar COPm con este token. Intenta con un monto menor o con otro token.";
   }
 
@@ -243,6 +274,13 @@ function formatCopPerUsd(value: number) {
   return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+function formatRateChange(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+  }).format(Math.abs(value));
 }
 
 function getRouteToAmount(routeResult: SquidRouteResult) {
@@ -477,6 +515,7 @@ function getCopmReceivedFromReceipts(
 export default function Home() {
   const targetNetwork = getTargetNetwork();
   const copmToken = targetNetwork.tokens.copm;
+  const usdtToken = targetNetwork.tokens.usdt;
   const approvalRouteKeyRef = useRef<string | null>(null);
   const [approvalTargets, setApprovalTargets] = useState<
     Partial<Record<string, Address>>
@@ -487,9 +526,10 @@ export default function Home() {
   const publicClient = usePublicClient();
   const { sendTransactionAsync } = useSendTransaction();
   const { writeContractAsync } = useWriteContract();
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(2);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [actionMode, setActionMode] = useState<ActionMode>("buy");
+  const [homePanel, setHomePanel] = useState<HomePanel>(null);
   const [tokens, setTokens] = useState(mockPortfolioTokens);
   const [copAmount, setCopAmount] = useState(purchasePreview.copAmount);
   const [recipientMode, setRecipientMode] = useState<"self" | "other">("self");
@@ -499,6 +539,11 @@ export default function Home() {
   const [transferConfirming, setTransferConfirming] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
   const [transferStatus, setTransferStatus] = useState<TransferStatus>("idle");
+  const [sellAmount, setSellAmount] = useState("");
+  const [sellError, setSellError] = useState<string | null>(null);
+  const [sellReceivedUsdt, setSellReceivedUsdt] = useState<string | null>(null);
+  const [sellStatus, setSellStatus] = useState<SellStatus>("idle");
+  const [sellTxHash, setSellTxHash] = useState<string | null>(null);
   const [copmBalance, setCopmBalance] = useState<bigint | undefined>();
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [activating, setActivating] = useState<string | null>(null);
@@ -547,13 +592,13 @@ export default function Home() {
 
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, [step]);
+  }, [homePanel, step]);
 
   useEffect(() => {
     setShowOnboarding(!hasSeenOnboarding());
 
     const savedMode = window.sessionStorage.getItem(ACTION_MODE_STORAGE_KEY);
-    if (savedMode === "buy" || savedMode === "transfer") {
+    if (savedMode === "buy" || savedMode === "sell" || savedMode === "transfer") {
       setActionMode(savedMode);
     }
 
@@ -585,6 +630,7 @@ export default function Home() {
 
   const handleActionModeChange = (mode: ActionMode) => {
     setActionMode(mode);
+    setHomePanel(null);
     window.sessionStorage.setItem(ACTION_MODE_STORAGE_KEY, mode);
     if (mode === "transfer") {
       setStep(2);
@@ -776,6 +822,33 @@ export default function Home() {
 
     return (await publicClient.readContract({
       address: token.address as Address,
+      abi: erc20Abi,
+      functionName: "allowance",
+      args: [portfolio.address, spender],
+    })) as bigint;
+  };
+
+  const waitForErc20Allowance = async (
+    tokenAddress: Address,
+    spender: Address,
+    minimum: bigint
+  ) => {
+    if (!publicClient || !portfolio.address) return minimum;
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const allowance = (await publicClient.readContract({
+        address: tokenAddress,
+        abi: erc20Abi,
+        functionName: "allowance",
+        args: [portfolio.address, spender],
+      })) as bigint;
+
+      if (allowance >= minimum) return allowance;
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+
+    return (await publicClient.readContract({
+      address: tokenAddress,
       abi: erc20Abi,
       functionName: "allowance",
       args: [portfolio.address, spender],
@@ -1201,6 +1274,177 @@ export default function Home() {
     }
   };
 
+  const sellCopm = async () => {
+    setSellError(null);
+    setSellReceivedUsdt(null);
+    setSellTxHash(null);
+    let intentId: string | undefined;
+
+    try {
+      if (!portfolio.address || !copmToken.address || !usdtToken.address) {
+        throw new Error("Wallet not ready");
+      }
+
+      const amountNumber = parseCopAmount(sellAmount);
+      if (amountNumber <= 0) throw new Error("Ingresa un monto mayor a 0.");
+      if (copmBalance !== undefined && parseCopmUnits(sellAmount, copmToken.decimals) > copmBalance) {
+        throw new Error("Saldo COPm insuficiente.");
+      }
+
+      const fromAmount = parseCopmUnits(sellAmount, copmToken.decimals);
+      intentId = createIntentId();
+      await createSwapIntent({
+        chainId: targetNetwork.chainId,
+        intentId,
+        outputToken: "USDT",
+        requestedCopm: sellAmount,
+        swapType: "sell",
+        userAddress: portfolio.address,
+      });
+      setSellStatus("quoting");
+
+      const initialUsdtBalance = publicClient
+        ? ((await publicClient.readContract({
+            address: usdtToken.address,
+            abi: erc20Abi,
+            functionName: "balanceOf",
+            args: [portfolio.address],
+          })) as bigint)
+        : undefined;
+
+      const routeResult = await getSquidRoute({
+        fromAddress: portfolio.address,
+        fromAmount: fromAmount.toString(),
+        fromChain: targetNetwork.squidChainId,
+        fromToken: copmToken.address,
+        slippage: 0.3,
+        toAddress: portfolio.address,
+        toChain: targetNetwork.squidChainId,
+        toToken: usdtToken.address,
+      });
+      const quotedUsdt = getRouteToAmount(routeResult);
+      const feeUsd = getRouteFeeUsd(routeResult);
+      const approvalTarget = routeResult.approvalTarget;
+
+      if (!approvalTarget) {
+        throw new Error("No pudimos preparar el permiso para vender COPm.");
+      }
+
+      let allowance = await waitForErc20Allowance(
+        copmToken.address,
+        approvalTarget,
+        fromAmount
+      );
+
+      if (allowance < fromAmount) {
+        setSellStatus("approving");
+        const approveHash = await writeContractAsync({
+          address: copmToken.address,
+          abi: erc20Abi,
+          functionName: "approve",
+          args: [approvalTarget, fromAmount],
+        });
+        await publicClient?.waitForTransactionReceipt({ hash: approveHash });
+        allowance = await waitForErc20Allowance(
+          copmToken.address,
+          approvalTarget,
+          fromAmount
+        );
+      }
+
+      if (allowance < fromAmount) {
+        throw new Error("El permiso aprobado no alcanza para esta venta.");
+      }
+
+      const transactionRequest = routeResult.route?.transactionRequest;
+      if (
+        !transactionRequest?.target ||
+        !isAddress(transactionRequest.target) ||
+        !transactionRequest.data
+      ) {
+        throw new Error("Invalid Squid transaction");
+      }
+
+      setSellStatus("confirming");
+      const hash = await sendTransactionAsync({
+        to: transactionRequest.target,
+        data: transactionRequest.data,
+        value: BigInt(transactionRequest.value ?? "0"),
+      });
+      setSellTxHash(hash);
+      await updateSwapIntent(intentId, {
+        feeUsd: feeUsd.toFixed(6),
+        squidRequestIds: routeResult.requestId ? [routeResult.requestId] : [],
+        status: "submitted",
+        swapTxHashes: [hash],
+        tokensSpent: [
+          {
+            amount: formatUnits(fromAmount, copmToken.decimals),
+            amountUsd: Number(formatUnits(fromAmount, copmToken.decimals)) / copPerUsd,
+            symbol: "COPm",
+          },
+        ],
+      });
+      setSellStatus("processing");
+      await publicClient?.waitForTransactionReceipt({ hash });
+      await waitForSquidStatus(routeResult, hash, targetNetwork.squidChainId);
+
+      const finalUsdtBalance = publicClient
+        ? ((await publicClient.readContract({
+            address: usdtToken.address,
+            abi: erc20Abi,
+            functionName: "balanceOf",
+            args: [portfolio.address],
+          })) as bigint)
+        : undefined;
+      const receivedUsdt =
+        initialUsdtBalance !== undefined &&
+        finalUsdtBalance !== undefined &&
+        finalUsdtBalance > initialUsdtBalance
+          ? finalUsdtBalance - initialUsdtBalance
+          : quotedUsdt;
+
+      setSellReceivedUsdt(
+        receivedUsdt !== undefined
+          ? formatUnits(receivedUsdt, usdtToken.decimals)
+          : "No disponible"
+      );
+      const sellIntentId = intentId;
+      await updateSwapIntent(sellIntentId, {
+        outputAmount:
+          receivedUsdt !== undefined
+            ? formatUnits(receivedUsdt, usdtToken.decimals)
+            : undefined,
+        status: "confirmed",
+      }).then(() => logSwapOnchain(sellIntentId));
+      setSwapResult({
+        amountLabel: "Recibiste",
+        completedAt: new Date().toISOString(),
+        copmBalance: "Actualizando",
+        receivedCopm:
+          receivedUsdt !== undefined
+            ? formatUnits(receivedUsdt, usdtToken.decimals)
+            : "No disponible",
+        title: "Venta completada",
+        txHash: hash,
+        txUrl: `${targetNetwork.blockExplorerUrl}/tx/${hash}`,
+        variant: "sell",
+      });
+      setSellStatus("complete");
+      await refreshCopmBalance();
+    } catch (error) {
+      setSellStatus("error");
+      const friendlyError = getFriendlyErrorMessage(error);
+      setSellError(friendlyError);
+      if (intentId) {
+        void updateSwapIntent(intentId, {
+          error: friendlyError,
+          status: "failed",
+        });
+      }
+    }
+  };
+
   const sendCopmTransfer = async () => {
     setTransferError(null);
 
@@ -1269,6 +1513,11 @@ export default function Home() {
   };
 
   const hasCopmBalance = copmBalance !== undefined && copmBalance > 0n;
+  const copmBalanceLabel =
+    copmBalance === undefined
+      ? "0"
+      : formatPesoAmountFromBigInt(copmBalance, copmToken.decimals);
+  const copmBalanceUsd = parseCopAmount(copmBalanceLabel) / copPerUsd;
 
   return (
     <main className="min-h-[calc(100vh-3rem)] bg-[#F7F8F5] text-[#17211B]">
@@ -1281,60 +1530,137 @@ export default function Home() {
         />
       )}
       <section className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-md flex-col px-4 py-3 sm:max-w-lg sm:py-5 md:max-w-2xl">
-        <ActionModeTabs mode={actionMode} onChange={handleActionModeChange} />
+        <HomeHeader
+          title={
+            actionMode === "transfer"
+              ? "Enviar pesos"
+              : actionMode === "sell"
+                ? "Vender pesos"
+                : "COPm"
+          }
+          onActivity={() => setHomePanel("activity")}
+          onDetails={() =>
+            setHomePanel((currentPanel) =>
+              currentPanel === "details" ? null : "details"
+            )
+          }
+        />
 
-        {actionMode === "buy" && (
-          <div className="mb-3 mt-3 grid grid-cols-3 gap-2">
-            {steps.map((label, index) => (
-              <button
-                key={label}
-                type="button"
-                onClick={() => setStep(index)}
-                className="h-2 rounded-full transition-colors"
-                style={{ backgroundColor: index <= step ? stepColors[index] : "#DDE4DC" }}
-                aria-label={`Ir a ${label}`}
-              />
-            ))}
-          </div>
-        )}
-
-        {actionMode === "transfer" ? (
-          <TransferCopmScreen
-            amount={transferAmount}
-            balance={copmBalance}
-            confirming={transferConfirming}
-            error={transferError}
-            hasCopmBalance={hasCopmBalance}
-            recipientAddress={recipientAddress}
-            savedRecipients={savedRecipients}
-            status={transferStatus}
-            tokenDecimals={copmToken.decimals}
-            onAmountChange={(value) => {
-              setTransferAmount(cleanCopInput(value));
-              setTransferConfirming(false);
-              setTransferError(null);
-            }}
-            onGetPesos={() => handleActionModeChange("buy")}
-                onMax={() => {
-                  if (copmBalance !== undefined) {
-                    setTransferAmount(
-                      formatPesoAmountFromBigInt(copmBalance, copmToken.decimals)
-                    );
-                    setTransferConfirming(false);
-                  }
-                }}
-            onRecipientAddressChange={(value) => {
-              updateRecipientAddress(value);
-              setTransferConfirming(false);
-            }}
-            onRecipientSaved={() => refreshSavedRecipients()}
-            onRemoveRecipient={handleRemoveRecipient}
-            onSaveRecipient={handleSaveRecipient}
-            onSend={sendCopmTransfer}
+        {homePanel === "activity" ? (
+          <ActivityPanel
+            explorerUrl={targetNetwork.blockExplorerUrl}
+            userAddress={portfolio.address}
+            onClose={() => setHomePanel(null)}
           />
+        ) : homePanel === "details" ? (
+          <DetailsPanel
+            approvalUsd={purchasePreview.activationCapUsd}
+            balanceCopm={copmBalanceLabel}
+            balanceUsd={copmBalanceUsd}
+            tokens={tokens}
+            onClose={() => setHomePanel(null)}
+            onReorder={reorderToken}
+            onSpend={() => undefined}
+            onTransfer={() => handleActionModeChange("transfer")}
+          />
+        ) : homePanel === "chart" ? (
+          <CopmChartPanel
+            balanceCopm={copmBalanceLabel}
+            balanceUsd={copmBalanceUsd}
+            copPerUsd={copPerUsd}
+            copVsUsdChange={
+              typeof tokenPrices.COP_PER_USD_24H_CHANGE === "number" &&
+              Number.isFinite(tokenPrices.COP_PER_USD_24H_CHANGE)
+                ? -tokenPrices.COP_PER_USD_24H_CHANGE
+                : null
+            }
+            onClose={() => setHomePanel(null)}
+          />
+        ) : actionMode === "transfer" ? (
+          <>
+            <button
+              type="button"
+              onClick={() => handleActionModeChange("buy")}
+              className="mb-3 inline-flex w-fit items-center gap-1 rounded-full bg-white px-3 py-2 text-sm font-semibold text-[#66736B] shadow-sm"
+            >
+              <ChevronRight className="h-4 w-4 rotate-180" />
+              Volver
+            </button>
+            <TransferCopmScreen
+              amount={transferAmount}
+              balance={copmBalance}
+              confirming={transferConfirming}
+              error={transferError}
+              hasCopmBalance={hasCopmBalance}
+              recipientAddress={recipientAddress}
+              savedRecipients={savedRecipients}
+              status={transferStatus}
+              tokenDecimals={copmToken.decimals}
+              onAmountChange={(value) => {
+                setTransferAmount(cleanCopInput(value));
+                setTransferConfirming(false);
+                setTransferError(null);
+              }}
+              onGetPesos={() => handleActionModeChange("buy")}
+              onMax={() => {
+                if (copmBalance !== undefined) {
+                  setTransferAmount(
+                    formatPesoAmountFromBigInt(copmBalance, copmToken.decimals)
+                  );
+                  setTransferConfirming(false);
+                }
+              }}
+              onRecipientAddressChange={(value) => {
+                updateRecipientAddress(value);
+                setTransferConfirming(false);
+              }}
+              onRecipientSaved={() => refreshSavedRecipients()}
+              onRemoveRecipient={handleRemoveRecipient}
+              onSaveRecipient={handleSaveRecipient}
+              onSend={sendCopmTransfer}
+            />
+          </>
         ) : (
           <>
-            {step === 0 && (
+            <BuySellTabs
+              mode={actionMode === "sell" ? "sell" : "buy"}
+              onChange={(mode) => handleActionModeChange(mode)}
+            />
+            {actionMode === "sell" ? (
+              <SellCopmScreen
+                amount={sellAmount}
+                balance={copmBalance}
+                error={sellError}
+                receivedUsdt={sellReceivedUsdt}
+                status={sellStatus}
+                tokenDecimals={copmToken.decimals}
+                txHash={sellTxHash}
+                txUrl={
+                  sellTxHash
+                    ? `${targetNetwork.blockExplorerUrl}/tx/${sellTxHash}`
+                    : undefined
+                }
+                onAmountChange={(value) => {
+                  setSellAmount(cleanCopInput(value));
+                  setSellError(null);
+                  setSellReceivedUsdt(null);
+                  setSellStatus("idle");
+                  setSellTxHash(null);
+                }}
+                onMax={() => {
+                  if (copmBalance !== undefined) {
+                    setSellAmount(
+                      formatPesoAmountFromBigInt(copmBalance, copmToken.decimals)
+                    );
+                    setSellError(null);
+                    setSellReceivedUsdt(null);
+                    setSellStatus("idle");
+                    setSellTxHash(null);
+                  }
+                }}
+                onSell={sellCopm}
+              />
+            ) : step === 0 ? (
               <TokenOrderScreen
                 tokens={tokens}
                 canContinue={
@@ -1347,9 +1673,7 @@ export default function Home() {
                 onReorder={reorderToken}
                 onContinue={() => setStep(1)}
               />
-            )}
-
-            {step === 1 && (
+            ) : step === 1 ? (
               <TokenActivationScreen
                 tokens={tokens}
                 allActive={allActive}
@@ -1360,11 +1684,10 @@ export default function Home() {
                 onActivate={activateNextToken}
                 onSkip={() => setStep(2)}
               />
-            )}
-
-            {step === 2 && (
+            ) : (
               <BuyCopmScreen
                 copAmount={copAmount}
+                copRateChange={tokenPrices.COP_PER_USD_24H_CHANGE}
                 copPerUsd={copPerUsd}
                 hasCompatibleTokens={hasCompatibleTokens}
                 isLive={isLivePortfolio}
@@ -1854,6 +2177,512 @@ function TokenEmptyStateMessage({ userAddress }: { userAddress?: string }) {
   );
 }
 
+function HomeHeader({
+  onActivity,
+  onDetails,
+  title,
+}: {
+  onActivity: () => void;
+  onDetails: () => void;
+  title: string;
+}) {
+  return (
+    <div className="mb-3 flex items-center justify-between">
+      <button
+        type="button"
+        onClick={onDetails}
+        aria-label="Detalles"
+        className="grid h-10 w-10 place-items-center rounded-full bg-white text-[#66736B] shadow-sm"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+      <p className="text-base font-semibold">{title}</p>
+      <button
+        type="button"
+        onClick={onActivity}
+        aria-label="Actividad"
+        className="grid h-10 w-10 place-items-center rounded-full bg-white text-[#66736B] shadow-sm"
+      >
+        <Clock className="h-5 w-5" />
+      </button>
+    </div>
+  );
+}
+
+function BuySellTabs({
+  mode,
+  onChange,
+}: {
+  mode: "buy" | "sell";
+  onChange: (mode: "buy" | "sell") => void;
+}) {
+  return (
+    <div className="mb-3 grid grid-cols-2 gap-1 rounded-full bg-white p-1 shadow-sm">
+      <button
+        type="button"
+        onClick={() => onChange("buy")}
+        className={`h-10 rounded-full text-sm font-semibold ${
+          mode === "buy"
+            ? "bg-[#6D45B8] text-white"
+            : "text-[#9AA69D]"
+        }`}
+      >
+        Comprar COPm
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("sell")}
+        className={`h-10 rounded-full text-sm font-semibold ${
+          mode === "sell"
+            ? "bg-[#6D45B8] text-white"
+            : "text-[#9AA69D]"
+        }`}
+      >
+        Vender COPm
+      </button>
+    </div>
+  );
+}
+
+function PanelShell({
+  children,
+  onClose,
+  title,
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+  title: string;
+}) {
+  return (
+    <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-xl font-semibold">{title}</h2>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Cerrar"
+          className="grid h-8 w-8 place-items-center rounded-full bg-[#F7F8F5] text-[#66736B]"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function formatActivityRecipient(address: string | null) {
+  if (!address) return "tu wallet";
+  const alias = getRecipientAlias(address);
+  if (alias) return `${alias} (${formatAddressPreview(address)})`;
+  return formatAddressPreview(address);
+}
+
+function ActivityPanel({
+  explorerUrl,
+  onClose,
+  userAddress,
+}: {
+  explorerUrl: string;
+  onClose: () => void;
+  userAddress?: Address;
+}) {
+  const [items, setItems] = useState<ActivityItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!userAddress) {
+      setItems([]);
+      return;
+    }
+
+    let cancelled = false;
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+    setLoading(true);
+    setError(null);
+
+    fetchUserActivity(userAddress, 30)
+      .then((nextItems) => {
+        if (cancelled) return;
+        setItems(
+          nextItems.filter(
+            (item) => new Date(item.createdAt).getTime() >= sevenDaysAgo
+          )
+        );
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setError("No pudimos cargar tu actividad.");
+        setItems([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userAddress]);
+
+  return (
+    <PanelShell title="Actividad" onClose={onClose}>
+      {!userAddress ? (
+        <p className="py-12 text-center text-sm font-medium text-[#66736B]">
+          Conecta tu wallet para ver tu actividad.
+        </p>
+      ) : loading ? (
+        <div className="space-y-2">
+          {[0, 1, 2].map((item) => (
+            <div
+              key={item}
+              className="h-24 animate-pulse rounded-[8px] bg-[#F7F8F5]"
+            />
+          ))}
+        </div>
+      ) : error ? (
+        <p className="py-12 text-center text-sm font-medium text-[#8A1F1F]">
+          {error}
+        </p>
+      ) : items.length === 0 ? (
+        <p className="py-12 text-center text-sm font-medium text-[#66736B]">
+          No hay actividad en los últimos 7 días.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {items.map((item) => {
+            const isSwap = item.type === "swap";
+            const isSell = item.swapType === "sell";
+            const title = isSwap
+              ? isSell
+                ? "Vendiste pesos"
+                : "Obtuviste pesos"
+              : "Enviaste pesos";
+            const statusLabel = getActivityStatusLabel(item.status, item.error);
+            const statusTone = getActivityStatusTone(item.status, item.error);
+
+            return (
+              <div
+                key={`${item.type}-${item.id}`}
+                className="rounded-[8px] border border-[#DDE4DC] bg-[#F7F8F5] p-3"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-[#17211B]">
+                      {title}
+                    </p>
+                    <p className="mt-1 text-xs text-[#66736B]">
+                  {isSwap ? (isSell ? "Desde" : "Destino") : "A"}{" "}
+                      {formatActivityRecipient(item.recipientAddress)}
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusTone}`}
+                  >
+                    {statusLabel}
+                  </span>
+                </div>
+                <p className="mt-3 text-lg font-semibold text-[#0E7C4F]">
+                  {isSwap && !isSell ? "+" : "-"}
+                  {formatPesoAmountFromString(item.amount)} pesos
+                </p>
+                <div className="mt-1 flex items-center justify-between gap-3 text-xs text-[#66736B]">
+                  <span>{formatActivityDate(item.createdAt)}</span>
+                  {item.txHash ? (
+                    <a
+                      href={`${explorerUrl}/tx/${item.txHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-semibold text-[#6D45B8] underline-offset-2 hover:underline"
+                    >
+                      Ver tx
+                    </a>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <Link
+        href="/activity"
+        className="mt-4 block h-11 rounded-[8px] bg-[#6D45B8] pt-3 text-center text-sm font-semibold text-white"
+      >
+        Ver historial completo
+      </Link>
+    </PanelShell>
+  );
+}
+
+function DetailsPanel({
+  approvalUsd,
+  balanceCopm,
+  balanceUsd,
+  onClose,
+  onReorder,
+  onSpend,
+  onTransfer,
+  tokens,
+}: {
+  approvalUsd: number;
+  balanceCopm: string;
+  balanceUsd: number;
+  onClose: () => void;
+  onReorder: (fromIndex: number, toIndex: number) => void;
+  onSpend: () => void;
+  onTransfer: () => void;
+  tokens: PortfolioToken[];
+}) {
+  const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const draggingSymbolRef = useRef<string | null>(null);
+  const [draggingSymbol, setDraggingSymbol] = useState<string | null>(null);
+  const orderableTokenCount = tokens.filter((token) => tokenHasBalance(token)).length;
+  const isOrderableToken = (token: PortfolioToken) => tokenHasBalance(token);
+
+  const getTargetIndex = (clientY: number) => {
+    for (let index = 0; index < tokens.length; index += 1) {
+      if (!isOrderableToken(tokens[index])) continue;
+      const row = rowRefs.current[tokens[index].symbol];
+      if (!row) continue;
+
+      const rect = row.getBoundingClientRect();
+      if (clientY < rect.top + rect.height / 2) return index;
+    }
+
+    for (let index = tokens.length - 1; index >= 0; index -= 1) {
+      if (isOrderableToken(tokens[index])) return index;
+    }
+
+    return -1;
+  };
+
+  const getNextOrderableIndex = (index: number, direction: -1 | 1) => {
+    for (
+      let nextIndex = index + direction;
+      nextIndex >= 0 && nextIndex < tokens.length;
+      nextIndex += direction
+    ) {
+      if (isOrderableToken(tokens[nextIndex])) return nextIndex;
+    }
+
+    return -1;
+  };
+
+  const startDrag = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    symbol: string
+  ) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    draggingSymbolRef.current = symbol;
+    setDraggingSymbol(symbol);
+  };
+
+  const startTouchDrag = (
+    event: ReactTouchEvent<HTMLButtonElement>,
+    symbol: string
+  ) => {
+    event.preventDefault();
+    draggingSymbolRef.current = symbol;
+    setDraggingSymbol(symbol);
+  };
+
+  const endDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    draggingSymbolRef.current = null;
+    setDraggingSymbol(null);
+  };
+
+  const endTouchDrag = () => {
+    draggingSymbolRef.current = null;
+    setDraggingSymbol(null);
+  };
+
+  useEffect(() => {
+    if (!draggingSymbol) return;
+
+    const moveDragTo = (clientY: number) => {
+      const symbol = draggingSymbolRef.current;
+      if (!symbol) return;
+
+      const fromIndex = tokens.findIndex((token) => token.symbol === symbol);
+      const toIndex = getTargetIndex(clientY);
+      if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return;
+      onReorder(fromIndex, toIndex);
+    };
+
+    const movePointerDrag = (event: PointerEvent) => {
+      moveDragTo(event.clientY);
+    };
+
+    const moveTouchDrag = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (!touch) return;
+      event.preventDefault();
+      moveDragTo(touch.clientY);
+    };
+
+    const cancelDrag = () => {
+      draggingSymbolRef.current = null;
+      setDraggingSymbol(null);
+    };
+
+    window.addEventListener("pointermove", movePointerDrag);
+    window.addEventListener("pointerup", cancelDrag);
+    window.addEventListener("pointercancel", cancelDrag);
+    window.addEventListener("touchmove", moveTouchDrag, { passive: false });
+    window.addEventListener("touchend", cancelDrag);
+    window.addEventListener("touchcancel", cancelDrag);
+
+    return () => {
+      window.removeEventListener("pointermove", movePointerDrag);
+      window.removeEventListener("pointerup", cancelDrag);
+      window.removeEventListener("pointercancel", cancelDrag);
+      window.removeEventListener("touchmove", moveTouchDrag);
+      window.removeEventListener("touchend", cancelDrag);
+      window.removeEventListener("touchcancel", cancelDrag);
+    };
+  }, [draggingSymbol, onReorder, tokens]);
+
+  return (
+    <PanelShell title="Detalles" onClose={onClose}>
+      <div className="flex items-center gap-3 rounded-[8px] border border-[#DDD2F3] bg-[#F2ECFF] p-3 text-[#6D45B8]">
+        <img
+          src={COPM_ICON_URL}
+          alt="COPm"
+          className="h-10 w-10 shrink-0 rounded-full"
+        />
+        <div className="min-w-0">
+          <p className="text-xs font-semibold">Balance COPm</p>
+          <p className="mt-1 text-xl font-semibold text-[#17211B]">
+            {balanceCopm} pesos
+          </p>
+          <p className="text-sm font-medium text-[#6D45B8]">
+            {formatUsd(balanceUsd)} USD aprox.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <p className="mb-2 text-xs font-semibold uppercase text-[#66736B]">
+          Prioridad de gasto
+        </p>
+        <div className="space-y-2">
+          {tokens.map((token, index) => {
+            const hasBalance = tokenHasBalance(token);
+            const canReorder = hasBalance && orderableTokenCount > 1;
+            const previousOrderableIndex = getNextOrderableIndex(index, -1);
+            const nextOrderableIndex = getNextOrderableIndex(index, 1);
+
+            return (
+              <div
+                key={token.symbol}
+                ref={(element) => {
+                  rowRefs.current[token.symbol] = element;
+                }}
+                className={`flex min-h-[58px] items-center gap-2 rounded-[8px] bg-[#F7F8F5] px-3 py-2 text-sm transition ${
+                  draggingSymbol === token.symbol ? "scale-[0.99] shadow-sm" : ""
+                } ${hasBalance ? "" : "opacity-45"}`}
+              >
+                <button
+                  type="button"
+                  aria-label={`Arrastrar ${token.symbol}`}
+                  disabled={!canReorder}
+                  className="touch-none rounded-full p-1 text-[#9AA69D] enabled:cursor-grab enabled:active:cursor-grabbing enabled:active:text-[#6D45B8] disabled:cursor-not-allowed disabled:opacity-40"
+                  onPointerDown={(event) => startDrag(event, token.symbol)}
+                  onPointerUp={endDrag}
+                  onPointerCancel={endDrag}
+                  onTouchStart={(event) => startTouchDrag(event, token.symbol)}
+                  onTouchEnd={endTouchDrag}
+                  onTouchCancel={endTouchDrag}
+                >
+                  <GripVertical className="h-5 w-5" />
+                </button>
+                <TokenMark token={token} />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold">{token.symbol}</p>
+                  <p className="truncate text-xs text-[#66736B]">
+                    {token.balanceDisplay ?? formatUsd(token.balanceUsd)}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <MoveButton
+                    label={`Subir ${token.symbol}`}
+                    disabled={!canReorder || previousOrderableIndex === -1}
+                    onClick={() => onReorder(index, previousOrderableIndex)}
+                    direction="up"
+                  />
+                  <MoveButton
+                    label={`Bajar ${token.symbol}`}
+                    disabled={!canReorder || nextOrderableIndex === -1}
+                    onClick={() => onReorder(index, nextOrderableIndex)}
+                    direction="down"
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-[8px] bg-[#FFF6D8] p-3 text-sm font-semibold">
+        Monto de permiso por token: hasta {formatUsd(approvalUsd)}
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={onTransfer}
+          className="h-11 rounded-[8px] bg-[#6D45B8] text-sm font-semibold text-white"
+        >
+          Transferir
+        </button>
+        <button
+          type="button"
+          onClick={onSpend}
+          disabled
+          className="h-11 rounded-[8px] bg-[#E9DFFC] text-sm font-semibold text-[#6D45B8] opacity-60"
+        >
+          Gastar
+        </button>
+      </div>
+    </PanelShell>
+  );
+}
+
+function CopmChartPanel({
+  balanceCopm,
+  balanceUsd,
+  copPerUsd,
+  copVsUsdChange,
+  onClose,
+}: {
+  balanceCopm: string;
+  balanceUsd: number;
+  copPerUsd: number;
+  copVsUsdChange: number | null;
+  onClose: () => void;
+}) {
+  return (
+    <PanelShell title="COPm / USD" onClose={onClose}>
+      <CompactCopmRateChart
+        copPerUsd={copPerUsd}
+        copVsUsdChange={copVsUsdChange}
+      />
+      <div className="mt-4 rounded-[8px] bg-[#F7F8F5] p-3">
+        <p className="text-xs font-medium text-[#66736B]">Mi balance</p>
+        <p className="mt-1 text-xl font-semibold">{balanceCopm} COPm</p>
+        <p className="text-sm font-medium text-[#66736B]">
+          {formatUsd(balanceUsd)} USD aprox.
+        </p>
+      </div>
+    </PanelShell>
+  );
+}
+
 function ActionModeTabs({
   mode,
   onChange,
@@ -1881,8 +2710,211 @@ function ActionModeTabs({
   );
 }
 
+function ButtonSpinner() {
+  return (
+    <span
+      className="h-4 w-4 animate-spin rounded-full border-2 border-white/45 border-t-white"
+      aria-hidden="true"
+    />
+  );
+}
+
+const rateChartIntervals: RateChartInterval[] = ["1w", "1m", "1y"];
+
+function getSparklinePoints(values: number[], width = 320, height = 88) {
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+
+  return values.map((value, index) => {
+    const x = (index / Math.max(values.length - 1, 1)) * width;
+    const y = 2 + height - ((value - min) / range) * height;
+    return { x, y };
+  });
+}
+
+function buildSmoothSparklinePath(points: { x: number; y: number }[]) {
+  if (points.length < 2) return "";
+
+  return points.reduce((path, point, index) => {
+    if (index === 0) return `M ${point.x.toFixed(2)} ${point.y.toFixed(2)}`;
+
+    const previous = points[index - 1];
+    const controlX = previous.x + (point.x - previous.x) / 2;
+    return `${path} C ${controlX.toFixed(2)} ${previous.y.toFixed(2)}, ${controlX.toFixed(2)} ${point.y.toFixed(2)}, ${point.x.toFixed(2)} ${point.y.toFixed(2)}`;
+  }, "");
+}
+
+function getFallbackRateChartValues(copPerUsd: number) {
+  return Array.from({ length: 8 }, () => copPerUsd);
+}
+
+function getCopChangeFromUsdCopValues(values: number[]) {
+  const first = values[0];
+  const last = values[values.length - 1];
+  if (!first || !last) return 0;
+
+  return ((first - last) / first) * 100;
+}
+
+function CompactCopmRateChart({
+  copPerUsd,
+  copVsUsdChange,
+}: {
+  copPerUsd: number;
+  copVsUsdChange: number | null;
+}) {
+  const [interval, setInterval] = useState<RateChartInterval>("1w");
+  const [historyByInterval, setHistoryByInterval] = useState<
+    Partial<Record<RateChartInterval, RateChartPoint[]>>
+  >({});
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState(false);
+  const historyPoints = historyByInterval[interval];
+  const rawValues = historyPoints?.length
+    ? historyPoints.map((point) => point.copPerUsd)
+    : getFallbackRateChartValues(copPerUsd);
+  const values =
+    rawValues.length >= 2 ? rawValues : getFallbackRateChartValues(copPerUsd);
+  const points = getSparklinePoints(values);
+  const linePath = buildSmoothSparklinePath(points);
+  const areaPath = linePath ? `${linePath} L 320 92 L 0 92 Z` : "";
+  const intervalChange = historyPoints && historyPoints.length >= 2
+    ? getCopChangeFromUsdCopValues(values)
+      : copVsUsdChange ?? 0;
+  const isUp = intervalChange >= 0;
+  const strokeColor = isUp ? "#0E7C4F" : "#B42318";
+
+  useEffect(() => {
+    if (historyByInterval[interval]) return;
+
+    let cancelled = false;
+    setIsLoadingHistory(true);
+    setHistoryError(false);
+
+    fetch(`/api/copm-rate-history?interval=${interval}`)
+      .then((response) => (response.ok ? response.json() : undefined))
+      .then(
+        (
+          data:
+            | {
+                points?: RateChartPoint[];
+              }
+            | undefined
+        ) => {
+          if (cancelled) return;
+          const nextPoints = (data?.points ?? []).filter(
+            (point) =>
+              Number.isFinite(point.timestamp) &&
+              Number.isFinite(point.copPerUsd)
+          );
+          if (!nextPoints.length) {
+            setHistoryError(true);
+            return;
+          }
+          setHistoryByInterval((current) => ({
+            ...current,
+            [interval]: nextPoints,
+          }));
+        }
+      )
+      .catch(() => {
+        if (!cancelled) setHistoryError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingHistory(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [historyByInterval, interval]);
+
+  return (
+    <div className="mb-3 rounded-[8px] border border-[#DDE4DC] bg-white p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-[#17211B]">COPm / USD</p>
+          <p className="mt-1 text-xs font-medium text-[#66736B]">
+            1 USD = {formatCopPerUsd(copPerUsd)} COPm
+          </p>
+        </div>
+        {Math.abs(intervalChange) > 0.001 ? (
+          <span
+            className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+              isUp ? "bg-[#E6F4EE] text-[#0E7C4F]" : "bg-[#FDECEC] text-[#B42318]"
+            }`}
+          >
+            {isUp ? "▲" : "▼"} {formatRateChange(intervalChange)}% {interval}
+          </span>
+        ) : isLoadingHistory ? (
+          <span className="rounded-full bg-[#F7F8F5] px-2.5 py-1 text-xs font-semibold text-[#66736B]">
+            Cargando
+          </span>
+        ) : null}
+      </div>
+
+      <svg
+        viewBox="0 0 320 92"
+        className="mt-3 h-24 w-full overflow-visible"
+        role="img"
+        aria-label="Movimiento COPm contra USD"
+      >
+        <defs>
+          <linearGradient id="copm-rate-fill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor={strokeColor} stopOpacity="0.2" />
+            <stop offset="100%" stopColor={strokeColor} stopOpacity="0" />
+          </linearGradient>
+          <filter id="copm-rate-glow" x="-10%" y="-40%" width="120%" height="180%">
+            <feGaussianBlur stdDeviation="1.4" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+        {areaPath ? <path d={areaPath} fill="url(#copm-rate-fill)" /> : null}
+        {linePath ? (
+          <path
+            d={linePath}
+            fill="none"
+            stroke={strokeColor}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="3"
+            filter="url(#copm-rate-glow)"
+          />
+        ) : null}
+      </svg>
+
+      <div className="mt-3 grid grid-cols-3 gap-1 rounded-full bg-[#F7F8F5] p-1">
+        {rateChartIntervals.map((item) => (
+          <button
+            key={item}
+            type="button"
+            onClick={() => setInterval(item)}
+            className={`h-8 rounded-full text-xs font-semibold ${
+              interval === item
+                ? "bg-[#E9DFFC] text-[#56359A]"
+                : "text-[#66736B]"
+            }`}
+          >
+            {item}
+          </button>
+        ))}
+      </div>
+      {historyError ? (
+        <p className="mt-2 text-xs font-medium text-[#66736B]">
+          No pudimos actualizar el histórico. Mostramos el tipo de cambio actual.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function BuyCopmScreen({
   copAmount,
+  copRateChange,
   copPerUsd,
   hasCompatibleTokens,
   isLive,
@@ -1912,6 +2944,7 @@ function BuyCopmScreen({
   onRecipientModeChange,
 }: {
   copAmount: string;
+  copRateChange?: number;
   copPerUsd: number;
   hasCompatibleTokens: boolean;
   isLive: boolean;
@@ -1979,6 +3012,7 @@ function BuyCopmScreen({
     requestedUsd > 0;
   const isBusy = swapStatus === "quoting" || swapStatus === "buying";
   const isApproving = Boolean(activating && approvalToken?.symbol === activating);
+  const showButtonSpinner = isBusy || isApproving;
   const buttonLabel =
     isApproving
       ? "Confirma en tu wallet"
@@ -2005,15 +3039,42 @@ function BuyCopmScreen({
       : swapProgress === "quoting"
         ? "Estamos buscando la mejor ruta disponible."
         : null;
+  const copVsUsdChange =
+    typeof copRateChange === "number" && Number.isFinite(copRateChange)
+      ? -copRateChange
+      : null;
 
   return (
     <div className="flex flex-1 flex-col">
+      {isLive ? (
+        <CompactCopmRateChart
+          copPerUsd={copPerUsd}
+          copVsUsdChange={copVsUsdChange}
+        />
+      ) : null}
+
       <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
         <p className="text-sm font-medium text-[#66736B]">Disponible para convertir</p>
         <p className="mt-1 text-2xl font-semibold leading-none">
           {formatUsd(totalUsd)}{" "}
           <span className="text-sm font-medium text-[#66736B]">aprox.</span>
         </p>
+        <div className="mt-3 flex items-center justify-between gap-3 text-xs font-semibold text-[#66736B]">
+          <span>Tipo de cambio</span>
+          <span className="flex items-center gap-2">
+            1 USD = {formatCopPerUsd(copPerUsd)} COPm
+            {copVsUsdChange !== null && Math.abs(copVsUsdChange) > 0.001 ? (
+              <span
+                className={
+                  copVsUsdChange > 0 ? "text-[#0E7C4F]" : "text-[#B42318]"
+                }
+              >
+                {copVsUsdChange > 0 ? "▲" : "▼"}{" "}
+                {formatRateChange(copVsUsdChange)}% 24h
+              </span>
+            ) : null}
+          </span>
+        </div>
       </div>
 
       <div className="mt-3 rounded-[8px] border border-[#DDE4DC] bg-white p-4">
@@ -2123,10 +3184,11 @@ function BuyCopmScreen({
         </div>
 
         <Button
-          className="mt-4 h-12 w-full rounded-[8px] bg-[#6D45B8] text-base font-semibold text-white hover:bg-[#56359A] disabled:bg-[#C8B9E8]"
+          className="mt-4 h-12 w-full gap-2 rounded-[8px] bg-[#6D45B8] text-base font-semibold text-white hover:bg-[#56359A] disabled:bg-[#C8B9E8]"
           disabled={isBusy || isApproving || (!canBuy && !canApprovePurchase)}
           onClick={needsApprovedToken ? onApprovePurchase : onBuy}
         >
+          {showButtonSpinner ? <ButtonSpinner /> : null}
           {buttonLabel}
         </Button>
         {progressMessage && (
@@ -2340,6 +3402,125 @@ function RecipientAddressInput({
   );
 }
 
+function SellCopmScreen({
+  amount,
+  balance,
+  error,
+  receivedUsdt,
+  status,
+  tokenDecimals,
+  txHash,
+  txUrl,
+  onAmountChange,
+  onMax,
+  onSell,
+}: {
+  amount: string;
+  balance?: bigint;
+  error: string | null;
+  receivedUsdt: string | null;
+  status: SellStatus;
+  tokenDecimals: number;
+  txHash: string | null;
+  txUrl?: string;
+  onAmountChange: (value: string) => void;
+  onMax: () => void;
+  onSell: () => void;
+}) {
+  const balanceDisplay =
+    balance === undefined ? "0" : formatCopmUnits(balance, tokenDecimals);
+  const amountNumber = parseCopAmount(amount);
+  const amountUnits =
+    amountNumber > 0 ? parseCopmUnits(amount, tokenDecimals) : 0n;
+  const hasInsufficientBalance =
+    balance !== undefined && amountUnits > balance;
+  const isBusy = ["quoting", "approving", "confirming", "processing"].includes(status);
+  const buttonLabel =
+    status === "quoting"
+      ? "Cotizando"
+      : status === "approving"
+        ? "Aprobando COPm"
+        : status === "confirming"
+          ? "Confirma en tu wallet"
+          : status === "processing"
+            ? "Vendiendo COPm"
+            : "Vender por USDT";
+  const canSell = amountNumber > 0 && !hasInsufficientBalance && !isBusy;
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
+        <p className="text-sm font-medium text-[#66736B]">Pesos disponibles</p>
+        <p className="mt-1 text-2xl font-semibold leading-none">
+          {balanceDisplay}{" "}
+          <span className="text-sm font-medium text-[#66736B]">pesos</span>
+        </p>
+      </div>
+
+      <div className="mt-3 rounded-[8px] border border-[#DDE4DC] bg-white p-4">
+        <label className="block text-sm font-semibold text-[#17211B]">
+          ¿Cuántos pesos quieres vender?
+        </label>
+        <div className="mt-2 flex gap-2">
+          <input
+            inputMode="numeric"
+            value={amount}
+            onChange={(event) => onAmountChange(event.target.value)}
+            className="h-[52px] min-w-0 flex-1 rounded-[8px] border border-[#DDE4DC] bg-[#F7F8F5] px-4 text-2xl font-semibold outline-none ring-[#6D45B8] focus:ring-2"
+          />
+          <button
+            type="button"
+            onClick={onMax}
+            className="h-[52px] rounded-[8px] bg-[#E9DFFC] px-4 text-sm font-semibold text-[#56359A]"
+          >
+            Max
+          </button>
+        </div>
+        <p className="mt-2 text-xs font-medium text-[#66736B]">
+          Recibirás USDT en esta wallet.
+        </p>
+
+        {hasInsufficientBalance && (
+          <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
+            Saldo COPm insuficiente para vender esta cantidad.
+          </div>
+        )}
+
+        {error && (
+          <div className="mt-3 rounded-[8px] bg-[#FDECEC] px-3 py-2 text-sm font-medium leading-5 text-[#8A1F1F]">
+            {error}
+          </div>
+        )}
+
+        {status === "complete" && (
+          <div className="mt-3 rounded-[8px] bg-[#E6F4EE] px-3 py-2 text-sm font-medium leading-5 text-[#0E7C4F]">
+            Venta completada. Recibiste {receivedUsdt ?? "USDT"} USDT.
+            {txHash && txUrl ? (
+              <a
+                href={txUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1 block font-semibold underline-offset-2 hover:underline"
+              >
+                Ver transacción {formatAddressPreview(txHash)}
+              </a>
+            ) : null}
+          </div>
+        )}
+
+        <Button
+          className="mt-4 h-12 w-full gap-2 rounded-[8px] bg-[#6D45B8] text-base font-semibold text-white hover:bg-[#56359A] disabled:bg-[#C8B9E8]"
+          disabled={!canSell}
+          onClick={onSell}
+        >
+          {isBusy ? <ButtonSpinner /> : null}
+          {buttonLabel}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function TransferCopmScreen({
   amount,
   balance,
@@ -2485,7 +3666,7 @@ function toShareableReceiptData(result: SwapResult): ShareableReceiptData {
     recipientAlias: result.recipientAlias,
     title: result.title ?? (result.variant === "transfer" ? "Envío completado" : "Conversión completada"),
     txHash: result.txHash,
-    variant: result.variant ?? "swap",
+    variant: result.variant === "transfer" ? "transfer" : "swap",
   };
 }
 
@@ -2503,6 +3684,7 @@ function SwapSuccessModal({
   const [sharingReceipt, setSharingReceipt] = useState(false);
   const [receiptFeedback, setReceiptFeedback] = useState<string | null>(null);
   const useReceiptPdf = shouldUseReceiptPdf(isMiniPay);
+  const isSell = result.variant === "sell";
   const isTransfer = result.variant === "transfer";
   const shareableReceipt = toShareableReceiptData(result);
 
@@ -2567,27 +3749,36 @@ function SwapSuccessModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/35 px-4 pb-4 sm:items-center sm:justify-center sm:pb-0">
-      <div
-        ref={receiptRef}
-        className="pointer-events-none fixed left-[-9999px] top-0"
-        aria-hidden
-      >
-        <ShareableReceipt data={shareableReceipt} />
-      </div>
+      {!isSell && (
+        <div
+          ref={receiptRef}
+          className="pointer-events-none fixed left-[-9999px] top-0"
+          aria-hidden
+        >
+          <ShareableReceipt data={shareableReceipt} />
+        </div>
+      )}
       <div className="w-full max-w-md rounded-[8px] bg-white p-4 shadow-xl">
         <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[#E6F4EE] text-[#0E7C4F]">
           <Check className="h-5 w-5" />
         </div>
         <h2 className="text-xl font-semibold">
-          {result.title ?? (isTransfer ? "Envío completado" : "Conversión completada")}
+          {result.title ??
+            (isTransfer
+              ? "Envío completado"
+              : isSell
+                ? "Venta completada"
+                : "Conversión completada")}
         </h2>
         <p className="mt-2 text-sm text-[#66736B]">
           {result.amountLabel ?? (isTransfer ? "Enviaste" : "Recibiste")}
         </p>
         <p className="mt-1 text-3xl font-semibold text-[#0E7C4F]">
-          {result.receivedCopm} pesos
+          {result.receivedCopm} {isSell ? "USDT" : "pesos"}
         </p>
-        <p className="mt-1 text-xs text-[#66736B]">Equivalente en COPm onchain</p>
+        <p className="mt-1 text-xs text-[#66736B]">
+          {isSell ? "USDT recibido en tu wallet" : "Equivalente en COPm onchain"}
+        </p>
         {result.shortfallMessage && (
           <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
             {result.shortfallMessage}
@@ -2618,7 +3809,7 @@ function SwapSuccessModal({
               <p className="font-semibold">{formattedDate}</p>
             </div>
           )}
-          {!isTransfer && (
+          {!isTransfer && !isSell && (
             <div>
               <p className="text-xs text-[#66736B]">Balance final</p>
               <p className="font-semibold">
@@ -2642,13 +3833,15 @@ function SwapSuccessModal({
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-2">
-          <Button
-            className="col-span-2 h-11 rounded-[8px] bg-[#6D45B8] text-white hover:bg-[#56359A]"
-            disabled={sharingReceipt}
-            onClick={() => void sendReceipt()}
-          >
-            {sharingReceipt ? "Generando comprobante..." : "Enviar comprobante"}
-          </Button>
+          {!isSell && (
+            <Button
+              className="col-span-2 h-11 rounded-[8px] bg-[#6D45B8] text-white hover:bg-[#56359A]"
+              disabled={sharingReceipt}
+              onClick={() => void sendReceipt()}
+            >
+              {sharingReceipt ? "Generando comprobante..." : "Enviar comprobante"}
+            </Button>
+          )}
           <Button
             variant="outline"
             className="col-span-2 h-11 rounded-[8px] border-[#DDE4DC]"
