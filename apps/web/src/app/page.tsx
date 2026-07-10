@@ -524,6 +524,7 @@ export default function Home() {
   const targetNetwork = getTargetNetwork();
   const copmToken = targetNetwork.tokens.copm;
   const usdtToken = targetNetwork.tokens.usdt;
+  const { isMiniPay } = useWalletAdapter();
   const approvalRouteKeyRef = useRef<string | null>(null);
   const [approvalTargets, setApprovalTargets] = useState<
     Partial<Record<string, Address>>
@@ -1014,8 +1015,17 @@ export default function Home() {
         throw new Error("El monto maximo es 10,000,000 COPm.");
       }
 
-      const swapRecipient =
-        recipientMode === "other" ? recipientAddress : portfolio.address;
+      const requestedRecipient =
+        recipientMode === "other" ? recipientAddress.trim() : portfolio.address;
+      if (!isAddress(requestedRecipient)) {
+        throw new Error("Ingresa una wallet destino valida.");
+      }
+      const usesMiniPayRecipientFallback =
+        isMiniPay &&
+        requestedRecipient.toLowerCase() !== portfolio.address.toLowerCase();
+      const swapRecipient = usesMiniPayRecipientFallback
+        ? portfolio.address
+        : requestedRecipient;
       if (!isAddress(swapRecipient)) {
         throw new Error("Ingresa una wallet destino valida.");
       }
@@ -1031,7 +1041,7 @@ export default function Home() {
       await createSwapIntent({
         chainId: targetNetwork.chainId,
         intentId,
-        recipientAddress: swapRecipient,
+        recipientAddress: requestedRecipient,
         requestedCopm: copAmount,
         userAddress: portfolio.address,
       });
@@ -1042,7 +1052,7 @@ export default function Home() {
             address: copmToken.address,
             abi: erc20Abi,
             functionName: "balanceOf",
-            args: [portfolio.address],
+            args: [swapRecipient],
           })) as bigint)
         : undefined;
       let lastHash: string | undefined;
@@ -1194,7 +1204,7 @@ export default function Home() {
             address: copmToken.address,
             abi: erc20Abi,
             functionName: "balanceOf",
-            args: [portfolio.address],
+            args: [swapRecipient],
           })) as bigint)
         : undefined;
 
@@ -1211,18 +1221,18 @@ export default function Home() {
             address: copmToken.address,
             abi: erc20Abi,
             functionName: "balanceOf",
-            args: [portfolio.address],
+            args: [swapRecipient],
           })) as bigint;
           if (finalCopmBalance > initialCopmBalance) break;
         }
       }
 
       const receiptCopm =
-        copmToken.address && portfolio.address
+        copmToken.address && swapRecipient
           ? getCopmReceivedFromReceipts(
               swapReceipts,
               copmToken.address,
-              portfolio.address
+              swapRecipient
             )
           : 0n;
       const balanceDeltaCopm =
@@ -1240,11 +1250,36 @@ export default function Home() {
         quotedCopmTotal > 0n
           ? initialCopmBalance + quotedCopmTotal
           : finalCopmBalance;
+      let transferHash: `0x${string}` | undefined;
+
+      if (usesMiniPayRecipientFallback) {
+        if (receivedCopm <= 0n) {
+          throw new Error("No pudimos confirmar los COPm recibidos para enviarlos.");
+        }
+
+        setSwapProgress("confirming");
+        transferHash = await writeContractAsync({
+          address: copmToken.address,
+          abi: erc20Abi,
+          functionName: "transfer",
+          args: [requestedRecipient, receivedCopm],
+        });
+        lastHash = transferHash;
+        swapTxHashes.push(transferHash);
+        await updateSwapIntent(intentId, {
+          squidRequestIds,
+          status: "submitted",
+          swapTxHashes,
+          tokensSpent,
+        });
+        setSwapProgress("processing");
+        await publicClient?.waitForTransactionReceipt({ hash: transferHash });
+      }
 
       setSwapResult({
         completedAt: new Date().toISOString(),
         copmBalance:
-          swapRecipient.toLowerCase() !== portfolio.address.toLowerCase()
+          requestedRecipient.toLowerCase() !== portfolio.address.toLowerCase()
             ? "No disponible"
             : displayedCopmBalance !== undefined
             ? formatCopmUnits(displayedCopmBalance, copmToken.decimals)
@@ -1254,8 +1289,8 @@ export default function Home() {
             ? formatCopmUnits(receivedCopm, copmToken.decimals)
             : formatCopmUnits(requestedCopm, copmToken.decimals),
         recipientAddress:
-          swapRecipient.toLowerCase() !== portfolio.address.toLowerCase()
-            ? swapRecipient
+          requestedRecipient.toLowerCase() !== portfolio.address.toLowerCase()
+            ? requestedRecipient
             : undefined,
         shortfallMessage,
         title: "Conversión completada",
@@ -1675,6 +1710,7 @@ export default function Home() {
                   !isLivePortfolio || (!isLoadingPortfolio && hasCompatibleTokens)
                 }
                 hasCompatibleTokens={hasCompatibleTokens}
+                isMiniPay={isMiniPay}
                 isLive={isLivePortfolio}
                 isLoading={isLoadingPortfolio}
                 userAddress={portfolio.address}
@@ -1698,6 +1734,7 @@ export default function Home() {
                 copRateChange={tokenPrices.COP_PER_USD_24H_CHANGE}
                 copPerUsd={copPerUsd}
                 hasCompatibleTokens={hasCompatibleTokens}
+                isMiniPay={isMiniPay}
                 isLive={isLivePortfolio}
                 totalUsd={effectiveTotalUsd}
                 detailsOpen={detailsOpen}
@@ -1756,6 +1793,7 @@ function TokenOrderScreen({
   tokens,
   canContinue,
   hasCompatibleTokens,
+  isMiniPay,
   isLive,
   isLoading,
   userAddress,
@@ -1765,6 +1803,7 @@ function TokenOrderScreen({
   tokens: PortfolioToken[];
   canContinue: boolean;
   hasCompatibleTokens: boolean;
+  isMiniPay: boolean;
   isLive: boolean;
   isLoading: boolean;
   userAddress?: string;
@@ -2960,6 +2999,7 @@ function BuyCopmScreen({
   copRateChange,
   copPerUsd,
   hasCompatibleTokens,
+  isMiniPay,
   isLive,
   totalUsd,
   detailsOpen,
@@ -2990,6 +3030,7 @@ function BuyCopmScreen({
   copRateChange?: number;
   copPerUsd: number;
   hasCompatibleTokens: boolean;
+  isMiniPay: boolean;
   isLive: boolean;
   totalUsd: number;
   detailsOpen: boolean;
@@ -3046,12 +3087,17 @@ function BuyCopmScreen({
     Boolean(approvalToken && approvalTargets[approvalToken.symbol]) &&
     needsApprovedToken &&
     requestedUsd > 0;
+  const normalizedRecipientAddress = recipientAddress.trim();
+  const hasValidRecipient =
+    recipientMode === "self" || isAddress(normalizedRecipientAddress);
+  const usesMiniPayRecipientFallback =
+    isMiniPay && recipientMode === "other" && hasValidRecipient;
   const canBuy =
     !hasNoFunds &&
     !isBelowMinimum &&
     !hasInsufficientFunds &&
     !needsApprovedToken &&
-    (recipientMode === "self" || isAddress(recipientAddress)) &&
+    hasValidRecipient &&
     requestedUsd > 0;
   const isBusy = swapStatus === "quoting" || swapStatus === "buying";
   const isApproving = Boolean(activating && approvalToken?.symbol === activating);
@@ -3193,6 +3239,13 @@ function BuyCopmScreen({
           <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
             Esta compra usará {getSwapPlanTokenSymbols(approvedPlan)} y requiere{" "}
             {approvedPlan.length} confirmaciones.
+          </div>
+        )}
+        {usesMiniPayRecipientFallback && canBuy && (
+          <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
+            En MiniPay esta compra requiere {approvedPlan.length + 1}{" "}
+            confirmaciones: primero recibes los pesos y luego los enviamos a la
+            wallet destino.
           </div>
         )}
         {swapError && (
