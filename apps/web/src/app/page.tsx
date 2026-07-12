@@ -2836,14 +2836,27 @@ function ButtonSpinner() {
 
 const rateChartIntervals: RateChartInterval[] = ["1w", "1m", "1y", "5y", "max"];
 
-function getSparklinePoints(values: number[], width = 720, height = 132) {
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getSparklineY(value: number, min: number, max: number, height = 132) {
   const range = max - min || 1;
+  return 4 + height - ((value - min) / range) * height;
+}
+
+function getSparklinePoints(
+  values: number[],
+  width = 720,
+  height = 132,
+  minValue = Math.min(...values),
+  maxValue = Math.max(...values)
+) {
+  const range = maxValue - minValue || 1;
 
   return values.map((value, index) => {
     const x = 2 + (index / Math.max(values.length - 1, 1)) * (width - 4);
-    const y = 4 + height - ((value - min) / range) * height;
+    const y = 4 + height - ((value - minValue) / range) * height;
     return { x, y };
   });
 }
@@ -2877,6 +2890,18 @@ function getRateChange(values: number[]) {
   return ((last - first) / first) * 100;
 }
 
+function getProjectedRateValue(values: number[]) {
+  if (values.length < 2) return values[0] ?? 0;
+
+  const last = values[values.length - 1];
+  const lookbackSize = Math.max(2, Math.ceil(values.length * 0.35));
+  const recent = values.slice(-lookbackSize);
+  const recentDelta = last - recent[0];
+  const maxProjectedMove = Math.abs(last) * 0.04;
+
+  return last + clamp(recentDelta * 0.4, -maxProjectedMove, maxProjectedMove);
+}
+
 function CompactCopmRateChart({
   copPerUsd,
   copVsUsdChange,
@@ -2902,9 +2927,23 @@ function CompactCopmRateChart({
       ? rawCopPerUsdValues
       : getFallbackRateChartValues(copPerUsd);
   const values = getPairRateValues(copPerUsdValues, pair);
-  const points = getSparklinePoints(values);
+  const projectedValue = getProjectedRateValue(values);
+  const chartMin = Math.min(...values, projectedValue);
+  const chartMax = Math.max(...values, projectedValue);
+  const points = getSparklinePoints(values, 600, 132, chartMin, chartMax);
   const linePath = buildSmoothSparklinePath(points);
-  const areaPath = linePath ? `${linePath} L 720 140 L 0 140 Z` : "";
+  const lastPoint = points[points.length - 1];
+  const projectedPoint = lastPoint
+    ? {
+        x: 718,
+        y: getSparklineY(projectedValue, chartMin, chartMax),
+      }
+    : undefined;
+  const projectionPath =
+    lastPoint && projectedPoint
+      ? buildSmoothSparklinePath([lastPoint, projectedPoint])
+      : "";
+  const areaPath = linePath ? `${linePath} L 600 140 L 0 140 Z` : "";
   const fallbackChange =
     pair === "usd-cop" ? -(copVsUsdChange ?? 0) : (copVsUsdChange ?? 0);
   const intervalChange =
@@ -2914,8 +2953,9 @@ function CompactCopmRateChart({
   const isUp = intervalChange >= 0;
   const strokeColor = isUp ? "#0E7C4F" : "#B42318";
   const pairLabel = pair === "usd-cop" ? "USD/COP" : "COP/USD";
+  const visibleRatePair = pair === "usd-cop" ? "cop-usd" : "usd-cop";
   const pairRate =
-    pair === "usd-cop"
+    visibleRatePair === "usd-cop"
       ? `1 USD = ${formatCopPerUsd(copPerUsd)} COP`
       : `1 COP = ${formatUsdPerCop(1 / copPerUsd)} USD`;
 
@@ -2997,7 +3037,8 @@ function CompactCopmRateChart({
               isUp ? "bg-[#E6F4EE] text-[#0E7C4F]" : "bg-[#FDECEC] text-[#B42318]"
             }`}
           >
-            {isUp ? "▲" : "▼"} {formatRateChange(intervalChange)}% {interval}
+            {isUp ? "▲" : "▼"} {formatRateChange(intervalChange)}%{" "}
+            {interval.toUpperCase()}
           </span>
         ) : isLoadingHistory ? (
           <span className="rounded-full bg-[#F7F8F5] px-2.5 py-1 text-xs font-semibold text-[#66736B]">
@@ -3035,6 +3076,17 @@ function CompactCopmRateChart({
             strokeLinejoin="round"
             strokeWidth="2.25"
             filter="url(#copm-rate-glow)"
+          />
+        ) : null}
+        {projectionPath ? (
+          <path
+            d={projectionPath}
+            fill="none"
+            stroke={strokeColor}
+            strokeDasharray="7 8"
+            strokeLinecap="round"
+            strokeWidth="2"
+            opacity="0.55"
           />
         ) : null}
       </svg>
