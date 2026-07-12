@@ -496,12 +496,12 @@ function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function getCopmReceivedFromReceipts(
+function getTokenReceivedFromReceipts(
   receipts: TransactionReceipt[],
-  copmAddress: Address,
+  tokenAddress: Address,
   userAddress: Address
 ) {
-  const normalizedCopmAddress = copmAddress.toLowerCase();
+  const normalizedTokenAddress = tokenAddress.toLowerCase();
   const normalizedUserAddress = userAddress.toLowerCase();
 
   return receipts.reduce((total, receipt) => {
@@ -509,7 +509,7 @@ function getCopmReceivedFromReceipts(
       abi: erc20Abi,
       eventName: "Transfer",
       logs: receipt.logs.filter(
-        (log) => log.address.toLowerCase() === normalizedCopmAddress
+        (log) => log.address.toLowerCase() === normalizedTokenAddress
       ),
     });
 
@@ -518,6 +518,14 @@ function getCopmReceivedFromReceipts(
       return to === normalizedUserAddress ? sum + log.args.value : sum;
     }, total);
   }, 0n);
+}
+
+function getCopmReceivedFromReceipts(
+  receipts: TransactionReceipt[],
+  copmAddress: Address,
+  userAddress: Address
+) {
+  return getTokenReceivedFromReceipts(receipts, copmAddress, userAddress);
 }
 
 export default function Home() {
@@ -550,6 +558,8 @@ export default function Home() {
   const [transferStatus, setTransferStatus] = useState<TransferStatus>("idle");
   const [sellAmount, setSellAmount] = useState("");
   const [sellError, setSellError] = useState<string | null>(null);
+  const [sellRecipientMode, setSellRecipientMode] = useState<"self" | "other">("self");
+  const [sellRecipientAddress, setSellRecipientAddress] = useState("");
   const [sellReceivedUsdt, setSellReceivedUsdt] = useState<string | null>(null);
   const [sellStatus, setSellStatus] = useState<SellStatus>("idle");
   const [sellTxHash, setSellTxHash] = useState<string | null>(null);
@@ -1335,11 +1345,25 @@ export default function Home() {
       }
 
       const fromAmount = parseCopmUnits(sellAmount, copmToken.decimals);
+      const requestedSellRecipient =
+        sellRecipientMode === "other"
+          ? sellRecipientAddress.trim()
+          : portfolio.address;
+      if (!isAddress(requestedSellRecipient)) {
+        throw new Error("Ingresa una wallet destino valida.");
+      }
+      const usesMiniPaySellRecipientFallback =
+        isMiniPay &&
+        requestedSellRecipient.toLowerCase() !== portfolio.address.toLowerCase();
+      const sellRecipient = usesMiniPaySellRecipientFallback
+        ? portfolio.address
+        : requestedSellRecipient;
       intentId = createIntentId();
       await createSwapIntent({
         chainId: targetNetwork.chainId,
         intentId,
         outputToken: "USDT",
+        recipientAddress: requestedSellRecipient,
         requestedCopm: sellAmount,
         swapType: "sell",
         userAddress: portfolio.address,
@@ -1351,7 +1375,7 @@ export default function Home() {
             address: usdtToken.address,
             abi: erc20Abi,
             functionName: "balanceOf",
-            args: [portfolio.address],
+            args: [sellRecipient],
           })) as bigint)
         : undefined;
 
@@ -1361,7 +1385,7 @@ export default function Home() {
         fromChain: targetNetwork.squidChainId,
         fromToken: copmToken.address,
         slippage: 0.3,
-        toAddress: portfolio.address,
+        toAddress: sellRecipient,
         toChain: targetNetwork.squidChainId,
         toToken: usdtToken.address,
       });
@@ -1415,11 +1439,12 @@ export default function Home() {
         value: BigInt(transactionRequest.value ?? "0"),
       });
       setSellTxHash(hash);
+      const sellTxHashes = [hash];
       await updateSwapIntent(intentId, {
         feeUsd: feeUsd.toFixed(6),
         squidRequestIds: routeResult.requestId ? [routeResult.requestId] : [],
         status: "submitted",
-        swapTxHashes: [hash],
+        swapTxHashes: sellTxHashes,
         tokensSpent: [
           {
             amount: formatUnits(fromAmount, copmToken.decimals),
@@ -1437,7 +1462,7 @@ export default function Home() {
             address: usdtToken.address,
             abi: erc20Abi,
             functionName: "balanceOf",
-            args: [portfolio.address],
+            args: [sellRecipient],
           })) as bigint)
         : undefined;
       const receivedUsdt =
@@ -1446,6 +1471,30 @@ export default function Home() {
         finalUsdtBalance > initialUsdtBalance
           ? finalUsdtBalance - initialUsdtBalance
           : quotedUsdt;
+      let finalHash = hash;
+
+      if (usesMiniPaySellRecipientFallback) {
+        if (!receivedUsdt || receivedUsdt <= 0n) {
+          throw new Error("No pudimos confirmar los USDT recibidos para enviarlos.");
+        }
+
+        setSellStatus("confirming");
+        const transferHash = await writeContractAsync({
+          address: usdtToken.address,
+          abi: erc20Abi,
+          functionName: "transfer",
+          args: [requestedSellRecipient, receivedUsdt],
+        });
+        finalHash = transferHash;
+        setSellTxHash(transferHash);
+        sellTxHashes.push(transferHash);
+        await updateSwapIntent(intentId, {
+          status: "submitted",
+          swapTxHashes: sellTxHashes,
+        });
+        setSellStatus("processing");
+        await publicClient?.waitForTransactionReceipt({ hash: transferHash });
+      }
 
       setSellReceivedUsdt(
         receivedUsdt !== undefined
@@ -1461,7 +1510,10 @@ export default function Home() {
         status: "confirmed",
       }).then(() => logSwapOnchain(sellIntentId));
       setSwapResult({
-        amountLabel: "Recibiste",
+        amountLabel:
+          requestedSellRecipient.toLowerCase() !== portfolio.address.toLowerCase()
+            ? "Enviaste"
+            : "Recibiste",
         completedAt: new Date().toISOString(),
         copmBalance: "Actualizando",
         receivedCopm:
@@ -1469,8 +1521,12 @@ export default function Home() {
             ? formatUnits(receivedUsdt, usdtToken.decimals)
             : "No disponible",
         title: "Venta completada",
-        txHash: hash,
-        txUrl: `${targetNetwork.blockExplorerUrl}/tx/${hash}`,
+        recipientAddress:
+          requestedSellRecipient.toLowerCase() !== portfolio.address.toLowerCase()
+            ? requestedSellRecipient
+            : undefined,
+        txHash: finalHash,
+        txUrl: `${targetNetwork.blockExplorerUrl}/tx/${finalHash}`,
         variant: "sell",
       });
       setSellStatus("complete");
@@ -1673,8 +1729,15 @@ export default function Home() {
               <SellCopmScreen
                 amount={sellAmount}
                 balance={copmBalance}
+                copPerUsd={copPerUsd}
+                copRateChange={tokenPrices.COP_PER_USD_24H_CHANGE}
                 error={sellError}
+                isLive={isLivePortfolio}
+                isMiniPay={isMiniPay}
+                recipientAddress={sellRecipientAddress}
+                recipientMode={sellRecipientMode}
                 receivedUsdt={sellReceivedUsdt}
+                savedRecipients={savedRecipients}
                 status={sellStatus}
                 tokenDecimals={copmToken.decimals}
                 txHash={sellTxHash}
@@ -1701,6 +1764,11 @@ export default function Home() {
                     setSellTxHash(null);
                   }
                 }}
+                onRecipientAddressChange={setSellRecipientAddress}
+                onRecipientModeChange={setSellRecipientMode}
+                onRecipientSaved={() => refreshSavedRecipients()}
+                onRemoveRecipient={handleRemoveRecipient}
+                onSaveRecipient={handleSaveRecipient}
                 onSell={sellCopm}
               />
             ) : step === 0 ? (
@@ -2812,12 +2880,14 @@ function getRateChange(values: number[]) {
 function CompactCopmRateChart({
   copPerUsd,
   copVsUsdChange,
+  defaultPair = "cop-usd",
 }: {
   copPerUsd: number;
   copVsUsdChange: number | null;
+  defaultPair?: RateChartPair;
 }) {
   const [interval, setInterval] = useState<RateChartInterval>("1w");
-  const [pair, setPair] = useState<RateChartPair>("cop-usd");
+  const [pair, setPair] = useState<RateChartPair>(defaultPair);
   const [historyByInterval, setHistoryByInterval] = useState<
     Partial<Record<RateChartInterval, RateChartPoint[]>>
   >({});
@@ -2900,8 +2970,8 @@ function CompactCopmRateChart({
         <div>
           <div className="inline-grid grid-cols-2 gap-1 rounded-full bg-[#F7F8F5] p-1">
             {([
-              ["usd-cop", "USD/COP"],
               ["cop-usd", "COP/USD"],
+              ["usd-cop", "USD/COP"],
             ] as const).map(([item, label]) => (
               <button
                 key={item}
@@ -3501,61 +3571,114 @@ function RecipientAddressInput({
 function SellCopmScreen({
   amount,
   balance,
+  copPerUsd,
+  copRateChange,
   error,
+  isLive,
+  isMiniPay,
+  recipientAddress,
+  recipientMode,
   receivedUsdt,
+  savedRecipients,
   status,
   tokenDecimals,
   txHash,
   txUrl,
   onAmountChange,
   onMax,
+  onRecipientAddressChange,
+  onRecipientModeChange,
+  onRecipientSaved,
+  onRemoveRecipient,
+  onSaveRecipient,
   onSell,
 }: {
   amount: string;
   balance?: bigint;
+  copPerUsd: number;
+  copRateChange?: number;
   error: string | null;
+  isLive: boolean;
+  isMiniPay: boolean;
+  recipientAddress: string;
+  recipientMode: "self" | "other";
   receivedUsdt: string | null;
+  savedRecipients: SavedRecipient[];
   status: SellStatus;
   tokenDecimals: number;
   txHash: string | null;
   txUrl?: string;
   onAmountChange: (value: string) => void;
   onMax: () => void;
+  onRecipientAddressChange: (value: string) => void;
+  onRecipientModeChange: (mode: "self" | "other") => void;
+  onRecipientSaved: () => void;
+  onRemoveRecipient: (address: string) => void;
+  onSaveRecipient: (address: string, alias: string) => SaveRecipientResult;
   onSell: () => void;
 }) {
   const balanceDisplay =
     balance === undefined ? "0" : formatCopmUnits(balance, tokenDecimals);
+  const balanceUsd =
+    balance === undefined
+      ? 0
+      : Number(formatUnits(balance, tokenDecimals)) / copPerUsd;
   const amountNumber = parseCopAmount(amount);
   const amountUnits =
     amountNumber > 0 ? parseCopmUnits(amount, tokenDecimals) : 0n;
+  const estimatedUsdt = amountNumber > 0 ? amountNumber / copPerUsd : 0;
   const hasInsufficientBalance =
     balance !== undefined && amountUnits > balance;
   const isBusy = ["quoting", "approving", "confirming", "processing"].includes(status);
+  const normalizedRecipientAddress = recipientAddress.trim();
+  const hasValidRecipient =
+    recipientMode === "self" || isAddress(normalizedRecipientAddress);
+  const usesMiniPayRecipientFallback =
+    isMiniPay && recipientMode === "other" && hasValidRecipient;
   const buttonLabel =
     status === "quoting"
       ? "Cotizando"
       : status === "approving"
         ? "Aprobando COPm"
         : status === "confirming"
-          ? "Confirma en tu wallet"
-          : status === "processing"
-            ? "Vendiendo COPm"
-            : "Vender por USDT";
-  const canSell = amountNumber > 0 && !hasInsufficientBalance && !isBusy;
+        ? "Confirma en tu wallet"
+        : status === "processing"
+          ? "Vendiendo COPm"
+          : "Vender COPm";
+  const canSell =
+    amountNumber > 0 && !hasInsufficientBalance && hasValidRecipient && !isBusy;
+  const copVsUsdChange =
+    typeof copRateChange === "number" && Number.isFinite(copRateChange)
+      ? -copRateChange
+      : null;
 
   return (
     <div className="flex flex-1 flex-col">
+      {isLive ? (
+        <CompactCopmRateChart
+          copPerUsd={copPerUsd}
+          copVsUsdChange={copVsUsdChange}
+          defaultPair="usd-cop"
+        />
+      ) : null}
+
       <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
-        <p className="text-sm font-medium text-[#66736B]">Pesos disponibles</p>
+        <p className="text-sm font-medium text-[#66736B]">
+          Disponible para vender
+        </p>
         <p className="mt-1 text-2xl font-semibold leading-none">
           {balanceDisplay}{" "}
-          <span className="text-sm font-medium text-[#66736B]">pesos</span>
+          <span className="text-sm font-medium text-[#66736B]">COPm</span>
         </p>
+        <div className="mt-3 flex items-center justify-between gap-3 text-xs font-semibold text-[#66736B]">
+          <span>Equivale</span>
+          <span>{formatUsd(balanceUsd)} USD aprox.</span>
+        </div>
       </div>
 
       <div className="mt-3 rounded-[8px] border border-[#DDE4DC] bg-white p-4">
         <label className="block text-sm font-semibold text-[#17211B]">
-          ¿Cuántos pesos quieres vender?
+          ¿Cuántos COPm quieres vender?
         </label>
         <div className="mt-2 flex gap-2">
           <input
@@ -3573,12 +3696,53 @@ function SellCopmScreen({
           </button>
         </div>
         <p className="mt-2 text-xs font-medium text-[#66736B]">
-          Recibirás USDT en esta wallet.
+          Equivale a {formatUsd(estimatedUsdt)} USD aprox.
         </p>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => onRecipientModeChange("self")}
+            className={`h-10 rounded-[8px] text-sm font-semibold ${
+              recipientMode === "self"
+                ? "bg-[#E9DFFC] text-[#56359A]"
+                : "bg-[#F7F8F5] text-[#66736B]"
+            }`}
+          >
+            Para mí
+          </button>
+          <button
+            type="button"
+            onClick={() => onRecipientModeChange("other")}
+            className={`h-10 rounded-[8px] text-sm font-semibold ${
+              recipientMode === "other"
+                ? "bg-[#E9DFFC] text-[#56359A]"
+                : "bg-[#F7F8F5] text-[#66736B]"
+            }`}
+          >
+            Enviar USDT
+          </button>
+        </div>
+        {recipientMode === "other" && (
+          <RecipientAddressInput
+            address={recipientAddress}
+            savedRecipients={savedRecipients}
+            warning="Verifica esta wallet. Si envías USDT a una wallet equivocada, no podremos revertirlo."
+            onChange={onRecipientAddressChange}
+            onRemoveRecipient={onRemoveRecipient}
+            onSaveRecipient={onSaveRecipient}
+            onRecipientSaved={onRecipientSaved}
+          />
+        )}
 
         {hasInsufficientBalance && (
           <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
             Saldo COPm insuficiente para vender esta cantidad.
+          </div>
+        )}
+        {usesMiniPayRecipientFallback && canSell && (
+          <div className="mt-3 rounded-[8px] bg-[#FFF6D8] px-3 py-2 text-sm font-medium leading-5 text-[#17211B]">
+            En MiniPay esta venta requiere 2 confirmaciones: primero recibes USDT
+            y luego lo enviamos a la wallet destino.
           </div>
         )}
 
@@ -3587,6 +3751,24 @@ function SellCopmScreen({
             {error}
           </div>
         )}
+
+        <div
+          className={`mt-3 rounded-[8px] p-4 ${
+            canSell ? "bg-[#E6F4EE]" : "bg-[#F2F5F1]"
+          }`}
+        >
+          <p className="text-sm font-medium text-[#66736B]">Recibirás</p>
+          <p
+            className={`mt-1 text-[28px] font-semibold leading-tight ${
+              canSell ? "text-[#0E7C4F]" : "text-[#66736B]"
+            }`}
+          >
+            {receivedUsdt ?? formatUsd(estimatedUsdt).replace("$", "")} USDT
+          </p>
+          <p className="mt-1 text-xs text-[#66736B]">
+            Equivalente en USD onchain
+          </p>
+        </div>
 
         {status === "complete" && (
           <div className="mt-3 rounded-[8px] bg-[#E6F4EE] px-3 py-2 text-sm font-medium leading-5 text-[#0E7C4F]">
