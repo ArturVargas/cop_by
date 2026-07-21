@@ -31,12 +31,16 @@ A modern Celo blockchain application built with Next.js, TypeScript, Squid Route
 
 3. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
+## Contributing
+
+We welcome external contributors. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening an issue or pull request.
+
 ## Project Structure
 
 This is a monorepo managed by Turborepo with the following structure:
 
 - `apps/web` - Next.js application with embedded UI components and utilities
-- `apps/hardhat` - Smart contract development environment
+- `apps/contracts` - Smart contract development environment
 
 ## Available Scripts
 

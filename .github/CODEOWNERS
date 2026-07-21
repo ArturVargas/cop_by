@@ -1,0 +1,7 @@
+* @ArturVargas
+
+apps/contracts/** @ArturVargas
+apps/web/src/app/api/** @ArturVargas
+apps/web/src/lib/squid-config.ts @ArturVargas
+apps/web/src/lib/db.ts @ArturVargas
+apps/web/src/lib/agent-session.ts @ArturVargas
