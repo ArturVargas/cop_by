@@ -9,9 +9,9 @@ export const ONBOARDING_STORAGE_KEY = "cop_by_onboarding_seen";
 export const OPEN_ONBOARDING_EVENT = "cop_by:open-onboarding";
 
 const bullets = [
-  "Usamos el saldo que ya tienes en MiniPay (USDC, USDT…).",
-  "Eliges cuántos pesos necesitas.",
-  "Los recibes en tu wallet o se los envías a alguien.",
+  "Entras con Google o email y obtienes una cuenta Stellar (G…).",
+  "Ves tu USDC sin necesidad de XLM (Cavos patrocina la red).",
+  "Luego envias USDC o lo gastas a Bre-B, Pix o SPEI.",
 ];
 
 export function hasSeenOnboarding() {
@@ -34,10 +34,10 @@ export function OnboardingScreen({ onStart }: { onStart: () => void }) {
           className="h-12 w-12 rounded-[8px]"
         />
         <h1 className="mt-5 text-2xl font-bold leading-tight text-[#17211B]">
-          Convierte tus dólares en pesos
+          USDC en Stellar, listo para pesos
         </h1>
         <p className="mt-2 text-sm leading-5 text-[#66736B]">
-          Envía pesos a cualquier wallet desde MiniPay.
+          Wallet embebida con Cavos. Sin MiniPay ni extension.
         </p>
         <ul className="mt-6 space-y-3">
           {bullets.map((bullet) => (
@@ -50,7 +50,7 @@ export function OnboardingScreen({ onStart }: { onStart: () => void }) {
           ))}
         </ul>
         <p className="mt-5 text-xs leading-5 text-[#66736B]">
-          Sin cuentas bancarias extra. Tú confirmas cada paso en tu wallet.
+          Hardware-isolated, non-custodial. Tu confirmas cada movimiento.
         </p>
         <Button
           className="mt-6 h-12 w-full rounded-[8px] bg-[#6D45B8] text-base font-semibold text-white hover:bg-[#56359A]"
