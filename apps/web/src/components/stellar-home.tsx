@@ -8,6 +8,7 @@ import { HomeTabs, type HomeTab } from "@/components/home-tabs";
 import { SendUsdcPanel } from "@/components/send-usdc-panel";
 import { useStellarWallet } from "@/hooks/use-stellar-wallet";
 import { CAVOS_NETWORK } from "@/lib/cavos-config";
+import { formatShortStellarGAddress } from "@/lib/stellar-address";
 import {
   hasSeenOnboarding,
   markOnboardingSeen,
@@ -131,8 +132,11 @@ export function StellarHome() {
           Para abrir tu cuenta en este dispositivo, vuelve a iniciar sesion.
         </p>
         {address && (
-          <p className="break-all rounded-[8px] border border-[#DDE4DC] bg-white px-3 py-2 font-mono text-xs text-[#17211B]">
-            {address}
+          <p
+            className="rounded-[8px] border border-[#DDE4DC] bg-white px-3 py-2 font-mono text-xs text-[#17211B]"
+            title={address}
+          >
+            {formatShortStellarGAddress(address)}
           </p>
         )}
         <Button
@@ -180,9 +184,12 @@ export function StellarHome() {
             Actualizar
           </button>
         </div>
-        <div className="mt-3 flex items-start justify-between gap-2">
-          <p className="break-all font-mono text-[11px] leading-4 text-[#66736B]">
-            {address}
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <p
+            className="font-mono text-[11px] leading-4 text-[#66736B]"
+            title={address ?? undefined}
+          >
+            {address ? formatShortStellarGAddress(address) : "—"}
           </p>
           <button
             type="button"
@@ -193,23 +200,22 @@ export function StellarHome() {
             {copied ? "Copiado" : "Copiar"}
           </button>
         </div>
-        <p className="mt-2 text-[11px] text-[#66736B]">
-          {trustlineReady ? "Trustline USDC lista" : "Preparando trustline…"}
-          {bootstrapping ? " · trabajando…" : ""}
-        </p>
-        {bootstrapError && !trustlineReady && (
-          <p className="mt-2 rounded-[8px] border border-[#F5C6CB] bg-[#FDECEE] px-3 py-2 text-xs text-[#9B1C1C]">
-            {bootstrapError}
-          </p>
-        )}
         {!trustlineReady && (
-          <Button
-            className="mt-3 h-10 w-full rounded-[8px] bg-[#0E7C4F] text-sm font-semibold text-white hover:bg-[#0A5F3C]"
-            disabled={bootstrapping}
-            onClick={() => void ensureAccountAndTrustline()}
-          >
-            {bootstrapping ? "Preparando…" : "Preparar trustline USDC"}
-          </Button>
+          <>
+            <p className="mt-2 text-[11px] text-[#66736B]">Preparando cuenta…</p>
+            {bootstrapError && (
+              <p className="mt-2 rounded-[8px] border border-[#F5C6CB] bg-[#FDECEE] px-3 py-2 text-xs text-[#9B1C1C]">
+                {bootstrapError}
+              </p>
+            )}
+            <Button
+              className="mt-3 h-10 w-full rounded-[8px] bg-[#0E7C4F] text-sm font-semibold text-white hover:bg-[#0A5F3C]"
+              disabled={bootstrapping}
+              onClick={() => void ensureAccountAndTrustline()}
+            >
+              {bootstrapping ? "Preparando…" : "Preparar cuenta"}
+            </Button>
+          </>
         )}
       </section>
 
