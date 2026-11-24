@@ -4,8 +4,11 @@ import { useEffect, useState } from "react";
 import { Check, Copy } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { HomeTabs, type HomeTab } from "@/components/home-tabs";
+import { SendUsdcPanel } from "@/components/send-usdc-panel";
 import { useStellarWallet } from "@/hooks/use-stellar-wallet";
 import { CAVOS_NETWORK } from "@/lib/cavos-config";
+import { formatShortStellarGAddress } from "@/lib/stellar-address";
 import {
   hasSeenOnboarding,
   markOnboardingSeen,
@@ -42,6 +45,7 @@ export function StellarHome() {
 
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [tab, setTab] = useState<HomeTab>("enviar");
 
   useEffect(() => {
     if (!hasSeenOnboarding()) setShowOnboarding(true);
@@ -128,8 +132,11 @@ export function StellarHome() {
           Para abrir tu cuenta en este dispositivo, vuelve a iniciar sesion.
         </p>
         {address && (
-          <p className="break-all rounded-[8px] border border-[#DDE4DC] bg-white px-3 py-2 font-mono text-xs text-[#17211B]">
-            {address}
+          <p
+            className="rounded-[8px] border border-[#DDE4DC] bg-white px-3 py-2 font-mono text-xs text-[#17211B]"
+            title={address}
+          >
+            {formatShortStellarGAddress(address)}
           </p>
         )}
         <Button
@@ -158,69 +165,85 @@ export function StellarHome() {
           Stellar · {CAVOS_NETWORK}
         </p>
         <h1 className="mt-2 text-2xl font-bold text-[#17211B]">Tu USDC</h1>
-        <p className="mt-1 text-sm text-[#66736B]">
-          Saldo listo para enviar o gastar (Bre-B / Pix / SPEI viene despues).
-        </p>
       </div>
-
-      <section className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
-        <p className="text-xs font-semibold text-[#66736B]">Saldo</p>
-        <p className="mt-1 text-3xl font-bold text-[#17211B]">
-          {formatUsdc(usdcBalance)}{" "}
-          <span className="text-base font-semibold text-[#66736B]">USDC</span>
-        </p>
-        <p className="mt-2 break-all text-[11px] leading-4 text-[#66736B]">
-          Asset {usdc.code}:{usdc.issuer}
-        </p>
-      </section>
 
       <section className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
         <div className="flex items-start justify-between gap-2">
           <div>
-            <p className="text-xs font-semibold text-[#66736B]">Cuenta Stellar</p>
-            <p className="mt-2 break-all font-mono text-xs leading-5 text-[#17211B]">
-              {address}
+            <p className="text-xs font-semibold text-[#66736B]">Saldo</p>
+            <p className="mt-1 text-3xl font-bold text-[#17211B]">
+              {formatUsdc(usdcBalance)}{" "}
+              <span className="text-base font-semibold text-[#66736B]">USDC</span>
             </p>
           </div>
           <button
             type="button"
+            onClick={() => void refreshUsdcBalance()}
+            className="h-9 shrink-0 rounded-full border border-[#DDE4DC] bg-[#F7F8F5] px-3 text-[11px] font-semibold text-[#17211B]"
+          >
+            Actualizar
+          </button>
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <p
+            className="font-mono text-[11px] leading-4 text-[#66736B]"
+            title={address ?? undefined}
+          >
+            {address ? formatShortStellarGAddress(address) : "—"}
+          </p>
+          <button
+            type="button"
             onClick={() => void copyAddress()}
-            className="inline-flex h-9 shrink-0 items-center gap-1 rounded-full border border-[#DDE4DC] bg-[#F7F8F5] px-3 text-[11px] font-semibold text-[#17211B]"
+            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-[#DDE4DC] bg-white px-2.5 text-[11px] font-semibold text-[#17211B]"
           >
             {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
             {copied ? "Copiado" : "Copiar"}
           </button>
         </div>
-        <p className="mt-3 text-xs text-[#66736B]">
-          Estado: {status}
-          {trustlineReady ? " · trustline USDC lista" : " · preparando trustline"}
-          {bootstrapping ? " · trabajando…" : ""}
-        </p>
-        {bootstrapError && !trustlineReady && (
-          <p className="mt-2 rounded-[8px] border border-[#F5C6CB] bg-[#FDECEE] px-3 py-2 text-xs text-[#9B1C1C]">
-            {bootstrapError}
-          </p>
+        {!trustlineReady && (
+          <>
+            <p className="mt-2 text-[11px] text-[#66736B]">Preparando cuenta…</p>
+            {bootstrapError && (
+              <p className="mt-2 rounded-[8px] border border-[#F5C6CB] bg-[#FDECEE] px-3 py-2 text-xs text-[#9B1C1C]">
+                {bootstrapError}
+              </p>
+            )}
+            <Button
+              className="mt-3 h-10 w-full rounded-[8px] bg-[#0E7C4F] text-sm font-semibold text-white hover:bg-[#0A5F3C]"
+              disabled={bootstrapping}
+              onClick={() => void ensureAccountAndTrustline()}
+            >
+              {bootstrapping ? "Preparando…" : "Preparar cuenta"}
+            </Button>
+          </>
         )}
       </section>
 
-      <div className="flex flex-col gap-2">
-        {!trustlineReady && (
-          <Button
-            className="h-11 w-full rounded-[8px] bg-[#0E7C4F] text-sm font-semibold text-white hover:bg-[#0A5F3C]"
-            disabled={bootstrapping}
-            onClick={() => void ensureAccountAndTrustline()}
-          >
-            {bootstrapping ? "Preparando cuenta…" : "Preparar cuenta + trustline USDC"}
-          </Button>
-        )}
-        <Button
-          variant="outline"
-          className="h-11 w-full rounded-[8px]"
-          onClick={() => void refreshUsdcBalance()}
-        >
-          Actualizar saldo
-        </Button>
-      </div>
+      <HomeTabs active={tab} onChange={setTab} />
+
+      {tab === "obtener" && (
+        <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
+          <p className="text-sm font-semibold text-[#17211B]">Obtener</p>
+          <p className="mt-1 text-sm text-[#66736B]">
+            Proximamente: depositar o comprar USDC. Por ahora fondea tu `G…` desde
+            otra wallet o faucet de testnet.
+          </p>
+          <p className="mt-3 break-all text-[11px] text-[#66736B]">
+            Asset {usdc.code}:{usdc.issuer}
+          </p>
+        </div>
+      )}
+
+      {tab === "enviar" && <SendUsdcPanel />}
+
+      {tab === "gastar" && (
+        <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
+          <p className="text-sm font-semibold text-[#17211B]">Gastar</p>
+          <p className="mt-1 text-sm text-[#66736B]">
+            Proximamente: Bre-B, Pix y SPEI via TuCOP Ramp.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
