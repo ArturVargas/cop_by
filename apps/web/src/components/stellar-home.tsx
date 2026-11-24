@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Check, Copy } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { HomeTabs, type HomeTab } from "@/components/home-tabs";
+import {
+  HomeTabPanel,
+  HomeTabs,
+  type HomeTab,
+} from "@/components/home-tabs";
 import { SendUsdcPanel } from "@/components/send-usdc-panel";
 import { useStellarWallet } from "@/hooks/use-stellar-wallet";
 import { CAVOS_NETWORK } from "@/lib/cavos-config";
@@ -43,8 +47,10 @@ export function StellarHome() {
     refreshUsdcBalance,
   } = useStellarWallet();
 
+  const tabsBaseId = `stellar-home-${useId().replace(/:/g, "")}`;
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "ok" | "fail">("idle");
+  const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<HomeTab>("enviar");
 
   useEffect(() => {
@@ -62,9 +68,25 @@ export function StellarHome() {
 
   const copyAddress = async () => {
     if (!address) return;
-    await navigator.clipboard?.writeText(address);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1200);
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("clipboard unavailable");
+      }
+      await navigator.clipboard.writeText(address);
+      setCopyStatus("ok");
+    } catch {
+      setCopyStatus("fail");
+    }
+    window.setTimeout(() => setCopyStatus("idle"), 1600);
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await refreshUsdcBalance();
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   if (showOnboarding) {
@@ -93,7 +115,9 @@ export function StellarHome() {
   if (status === "loading") {
     return (
       <div className="mx-auto flex w-full max-w-md items-center justify-center px-4 py-16">
-        <p className="text-sm text-[#66736B]">Preparando tu cuenta…</p>
+        <p className="text-sm text-[#66736B]" role="status">
+          Preparando tu cuenta…
+        </p>
       </div>
     );
   }
@@ -110,7 +134,10 @@ export function StellarHome() {
           </h1>
         </div>
         {authError && (
-          <p className="rounded-[8px] border border-[#F5C6CB] bg-[#FDECEE] px-3 py-2 text-sm text-[#9B1C1C]">
+          <p
+            className="rounded-[8px] border border-[#F5C6CB] bg-[#FDECEE] px-3 py-2 text-sm text-[#9B1C1C]"
+            role="alert"
+          >
             {authError}
           </p>
         )}
@@ -178,10 +205,12 @@ export function StellarHome() {
           </div>
           <button
             type="button"
-            onClick={() => void refreshUsdcBalance()}
-            className="h-9 shrink-0 rounded-full border border-[#DDE4DC] bg-[#F7F8F5] px-3 text-[11px] font-semibold text-[#17211B]"
+            onClick={() => void onRefresh()}
+            disabled={refreshing}
+            aria-busy={refreshing}
+            className="h-9 min-h-9 shrink-0 rounded-full border border-[#DDE4DC] bg-[#F7F8F5] px-3 text-[11px] font-semibold text-[#17211B] disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F]"
           >
-            Actualizar
+            {refreshing ? "Actualizando…" : "Actualizar"}
           </button>
         </div>
         <div className="mt-3 flex items-center justify-between gap-2">
@@ -194,17 +223,38 @@ export function StellarHome() {
           <button
             type="button"
             onClick={() => void copyAddress()}
-            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-[#DDE4DC] bg-white px-2.5 text-[11px] font-semibold text-[#17211B]"
+            aria-label="Copiar direccion de cuenta"
+            className="inline-flex h-8 min-h-8 shrink-0 items-center gap-1 rounded-full border border-[#DDE4DC] bg-white px-2.5 text-[11px] font-semibold text-[#17211B] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F]"
           >
-            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-            {copied ? "Copiado" : "Copiar"}
+            {copyStatus === "ok" ? (
+              <Check className="h-3.5 w-3.5" aria-hidden="true" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+            )}
+            {copyStatus === "ok"
+              ? "Copiado"
+              : copyStatus === "fail"
+                ? "Error"
+                : "Copiar"}
           </button>
         </div>
+        <p className="sr-only" role="status" aria-live="polite">
+          {copyStatus === "ok"
+            ? "Direccion copiada"
+            : copyStatus === "fail"
+              ? "No se pudo copiar la direccion"
+              : ""}
+        </p>
         {!trustlineReady && (
           <>
-            <p className="mt-2 text-[11px] text-[#66736B]">Preparando cuenta…</p>
+            <p className="mt-2 text-[11px] text-[#66736B]" role="status">
+              Preparando cuenta…
+            </p>
             {bootstrapError && (
-              <p className="mt-2 rounded-[8px] border border-[#F5C6CB] bg-[#FDECEE] px-3 py-2 text-xs text-[#9B1C1C]">
+              <p
+                className="mt-2 rounded-[8px] border border-[#F5C6CB] bg-[#FDECEE] px-3 py-2 text-xs text-[#9B1C1C]"
+                role="alert"
+              >
                 {bootstrapError}
               </p>
             )}
@@ -219,31 +269,37 @@ export function StellarHome() {
         )}
       </section>
 
-      <HomeTabs active={tab} onChange={setTab} />
+      <HomeTabs active={tab} onChange={setTab} id={tabsBaseId} />
 
-      {tab === "obtener" && (
+      <HomeTabPanel tab="obtener" active={tab} baseId={tabsBaseId}>
         <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
-          <p className="text-sm font-semibold text-[#17211B]">Obtener</p>
+          <p className="text-sm font-semibold text-[#17211B]">Obtener USDC</p>
           <p className="mt-1 text-sm text-[#66736B]">
-            Proximamente: depositar o comprar USDC. Por ahora fondea tu `G…` desde
-            otra wallet o faucet de testnet.
+            Copia tu cuenta y fondea desde otra wallet, o usa el faucet de Circle
+            en testnet. Depositar en la app llega mas adelante.
           </p>
-          <p className="mt-3 break-all text-[11px] text-[#66736B]">
-            Asset {usdc.code}:{usdc.issuer}
+          <p className="mt-3 text-[11px] text-[#66736B]">
+            Asset {usdc.code} · issuer en tooltip del saldo
+          </p>
+          <p className="mt-1 break-all font-mono text-[10px] text-[#66736B]" title={usdc.issuer}>
+            {usdc.code}:{formatShortStellarGAddress(usdc.issuer)}
           </p>
         </div>
-      )}
+      </HomeTabPanel>
 
-      {tab === "enviar" && <SendUsdcPanel />}
+      <HomeTabPanel tab="enviar" active={tab} baseId={tabsBaseId}>
+        <SendUsdcPanel />
+      </HomeTabPanel>
 
-      {tab === "gastar" && (
+      <HomeTabPanel tab="gastar" active={tab} baseId={tabsBaseId}>
         <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
-          <p className="text-sm font-semibold text-[#17211B]">Gastar</p>
+          <p className="text-sm font-semibold text-[#17211B]">Gastar a pesos</p>
           <p className="mt-1 text-sm text-[#66736B]">
-            Proximamente: Bre-B, Pix y SPEI via TuCOP Ramp.
+            Pronto: Bre-B (COP), Pix y SPEI con TuCOP Ramp. Mientras tanto puedes
+            enviar USDC a otra cuenta Stellar.
           </p>
         </div>
-      )}
+      </HomeTabPanel>
     </div>
   );
 }
