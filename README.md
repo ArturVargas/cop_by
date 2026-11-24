@@ -17,6 +17,20 @@ MiniPay users often hold small amounts across USDC, USDT, ETH, or WBTC, but conv
 
 A modern Celo blockchain application built with Next.js, TypeScript, Squid Router, Neon, and Turborepo.
 
+## MVP (8 days, TuCOP Stellar ready)
+
+Next slice on this `main`: **Cavos + TuCOP Ramp + Next.js**. Stellar USDC only. Rails: Bre-B, Pix, SPEI. Out of scope: MiniPay, Squid, CoDi, and any Cop-BY clone.
+
+High level:
+
+1. Bootstrap Cavos Stellar wallet (login, `G…`, USDC trustline).
+2. Home: balance + send USDC.
+3. Server-side TuCOP (quotes / destinations / payments).
+4. Spend USDC to Bre-B, then Pix and SPEI.
+5. Activity, webhooks, polish.
+
+Detail: [docs/MVP-8D.md](./docs/MVP-8D.md).
+
 ## Getting Started
 
 1. Install dependencies:
