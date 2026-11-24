@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useId, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useStellarWallet } from "@/hooks/use-stellar-wallet";
@@ -13,6 +13,7 @@ import {
 } from "@/lib/saved-recipients";
 import { sendUsdc } from "@/lib/send-usdc";
 import {
+  formatShortStellarGAddress,
   isStellarGAddress,
   normalizeStellarGAddress,
 } from "@/lib/stellar-address";
@@ -63,6 +64,14 @@ export function SendUsdcPanel() {
     refreshUsdcBalance,
   } = useStellarWallet();
 
+  const formId = useId().replace(/:/g, "");
+  const amountId = `${formId}-amount`;
+  const destId = `${formId}-dest`;
+  const aliasId = `${formId}-alias`;
+  const amountErrorId = `${formId}-amount-error`;
+  const destErrorId = `${formId}-dest-error`;
+  const formErrorId = `${formId}-form-error`;
+
   const [destination, setDestination] = useState("");
   const [alias, setAlias] = useState("");
   const [amount, setAmount] = useState("");
@@ -70,6 +79,9 @@ export function SendUsdcPanel() {
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [recipients, setRecipients] = useState<SavedRecipient[]>([]);
+  const [amountTouched, setAmountTouched] = useState(false);
+  const [destTouched, setDestTouched] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
     setRecipients(getSavedRecipients());
@@ -83,23 +95,45 @@ export function SendUsdcPanel() {
   const amountNumber = Number(amount);
   const balanceNumber = usdcBalance === null ? NaN : Number(usdcBalance);
 
-  const canSubmit =
+  const amountError = (() => {
+    if (!amount.trim()) return "Ingresa un monto.";
+    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
+      return "El monto debe ser mayor a 0.";
+    }
+    if (Number.isFinite(balanceNumber) && amountNumber > balanceNumber) {
+      return "Saldo USDC insuficiente.";
+    }
+    return null;
+  })();
+
+  const destError = (() => {
+    if (!destination.trim()) return "Ingresa una cuenta G…";
+    if (!isStellarGAddress(normalizedDest)) return "Cuenta Stellar invalida.";
+    if (address && normalizedDest === address) {
+      return "No puedes enviarte a ti mismo.";
+    }
+    return null;
+  })();
+
+  const showAmountError = (amountTouched || submitted) && !!amountError;
+  const showDestError = (destTouched || submitted) && !!destError;
+
+  const canSend =
     status === "ready" &&
     trustlineReady &&
     !!wallet &&
-    isStellarGAddress(normalizedDest) &&
-    normalizedDest !== address &&
-    Number.isFinite(amountNumber) &&
-    amountNumber > 0 &&
-    (!Number.isFinite(balanceNumber) || amountNumber <= balanceNumber);
+    !amountError &&
+    !destError;
 
   const onPickRecipient = (item: SavedRecipient) => {
     setDestination(item.address);
     setAlias(item.alias);
+    setDestTouched(true);
+    setError(null);
   };
 
   const onConfirmSend = async () => {
-    if (!wallet || wallet.chain !== "stellar" || !canSubmit) return;
+    if (!wallet || wallet.chain !== "stellar" || !canSend) return;
 
     setStep("sending");
     setError(null);
@@ -124,9 +158,17 @@ export function SendUsdcPanel() {
     }
   };
 
+  const onFormSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSubmitted(true);
+    setError(null);
+    if (amountError || destError) return;
+    setStep("confirm");
+  };
+
   if (status !== "ready") {
     return (
-      <p className="text-sm text-[#66736B]">
+      <p className="text-sm text-[#66736B]" role="status">
         Entra y prepara tu cuenta para enviar USDC.
       </p>
     );
@@ -134,8 +176,8 @@ export function SendUsdcPanel() {
 
   if (!trustlineReady) {
     return (
-      <p className="text-sm text-[#66736B]">
-        Preparando trustline USDC…
+      <p className="text-sm text-[#66736B]" role="status">
+        Preparando cuenta USDC…
       </p>
     );
   }
@@ -143,10 +185,13 @@ export function SendUsdcPanel() {
   if (step === "done" && txHash) {
     return (
       <div className="flex flex-col gap-4">
-        <div className="rounded-[8px] border border-[#D5EADF] bg-[#E6F4EE] p-4">
-          <p className="text-sm font-semibold text-[#0E7C4F]">Envio enviado</p>
+        <div
+          className="rounded-[8px] border border-[#D5EADF] bg-[#E6F4EE] p-4"
+          role="status"
+        >
+          <p className="text-sm font-semibold text-[#0E7C4F]">Envio completado</p>
           <p className="mt-1 text-sm text-[#17211B]">
-            {amount} USDC → destinatario
+            {amount} USDC enviados
           </p>
           <p className="mt-3 break-all font-mono text-[11px] text-[#66736B]">
             {txHash}
@@ -167,6 +212,8 @@ export function SendUsdcPanel() {
             setAmount("");
             setTxHash(null);
             setError(null);
+            setSubmitted(false);
+            setAmountTouched(false);
           }}
         >
           Enviar otro
@@ -177,14 +224,17 @@ export function SendUsdcPanel() {
 
   if (step === "confirm" || step === "sending") {
     return (
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4" aria-busy={step === "sending"}>
         <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
           <p className="text-xs font-semibold text-[#66736B]">Confirmas enviar</p>
           <p className="mt-2 text-2xl font-bold text-[#17211B]">
             {amount} <span className="text-base text-[#66736B]">USDC</span>
           </p>
           <p className="mt-3 text-xs font-semibold text-[#66736B]">A</p>
-          <p className="mt-1 break-all font-mono text-xs text-[#17211B]">
+          <p
+            className="mt-1 break-all font-mono text-xs text-[#17211B]"
+            title={normalizedDest}
+          >
             {normalizedDest}
           </p>
           {alias ? (
@@ -195,7 +245,11 @@ export function SendUsdcPanel() {
             trustline, se deja claimable via Reserve.
           </p>
         </div>
-        {error && step === "sending" ? null : null}
+        {step === "sending" ? (
+          <p className="text-sm text-[#66736B]" role="status">
+            Firmando envio…
+          </p>
+        ) : null}
         <Button
           className="h-11 w-full rounded-[8px] bg-[#0E7C4F] text-sm font-semibold text-white hover:bg-[#0A5F3C] disabled:opacity-60"
           disabled={step === "sending"}
@@ -216,55 +270,88 @@ export function SendUsdcPanel() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <form className="flex flex-col gap-4" onSubmit={onFormSubmit} noValidate>
       <div>
-        <label className="text-xs font-semibold text-[#66736B]">Monto USDC</label>
+        <label htmlFor={amountId} className="text-xs font-semibold text-[#66736B]">
+          Monto USDC <span aria-hidden="true">*</span>
+        </label>
         <input
+          id={amountId}
+          name="amount"
           inputMode="decimal"
+          enterKeyHint="next"
+          required
+          aria-invalid={showAmountError}
+          aria-describedby={showAmountError ? amountErrorId : undefined}
           value={amount}
-          onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+          onChange={(e) => {
+            setAmount(e.target.value.replace(/[^0-9.]/g, ""));
+            setError(null);
+          }}
+          onBlur={() => setAmountTouched(true)}
           placeholder="0.00"
-          className="mt-1 h-12 w-full rounded-[8px] border border-[#DDE4DC] bg-white px-3 text-base text-[#17211B] outline-none focus:border-[#0E7C4F]"
+          className="mt-1 h-12 w-full rounded-[8px] border border-[#DDE4DC] bg-white px-3 text-base text-[#17211B] outline-none focus:border-[#0E7C4F] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F] aria-[invalid=true]:border-[#9B1C1C]"
         />
         <button
           type="button"
           className="mt-1 text-xs font-semibold text-[#0E7C4F]"
           onClick={() => {
-            if (usdcBalance && Number(usdcBalance) > 0) setAmount(usdcBalance);
+            if (usdcBalance && Number(usdcBalance) > 0) {
+              setAmount(usdcBalance);
+              setAmountTouched(true);
+            }
           }}
         >
           Usar todo ({usdcBalance ?? "0"} USDC)
         </button>
+        {showAmountError ? (
+          <p id={amountErrorId} className="mt-1 text-xs text-[#9B1C1C]" role="alert">
+            {amountError}
+          </p>
+        ) : null}
       </div>
 
       <div>
-        <label className="text-xs font-semibold text-[#66736B]">
-          Destinatario (G…)
+        <label htmlFor={destId} className="text-xs font-semibold text-[#66736B]">
+          Destinatario (G…) <span aria-hidden="true">*</span>
         </label>
         <input
-          value={destination}
-          onChange={(e) => setDestination(e.target.value)}
-          placeholder="G…"
+          id={destId}
+          name="destination"
+          autoComplete="off"
           spellCheck={false}
-          className="mt-1 h-12 w-full rounded-[8px] border border-[#DDE4DC] bg-white px-3 font-mono text-xs text-[#17211B] outline-none focus:border-[#0E7C4F]"
+          enterKeyHint="next"
+          required
+          aria-invalid={showDestError}
+          aria-describedby={showDestError ? destErrorId : undefined}
+          value={destination}
+          onChange={(e) => {
+            setDestination(e.target.value);
+            setError(null);
+          }}
+          onBlur={() => setDestTouched(true)}
+          placeholder="G…"
+          className="mt-1 h-12 w-full rounded-[8px] border border-[#DDE4DC] bg-white px-3 font-mono text-xs text-[#17211B] outline-none focus:border-[#0E7C4F] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F] aria-[invalid=true]:border-[#9B1C1C]"
         />
-        {destination && !isStellarGAddress(normalizedDest) && (
-          <p className="mt-1 text-xs text-[#9B1C1C]">Cuenta Stellar invalida</p>
-        )}
-        {normalizedDest && address && normalizedDest === address && (
-          <p className="mt-1 text-xs text-[#9B1C1C]">No puedes enviarte a ti mismo</p>
-        )}
+        {showDestError ? (
+          <p id={destErrorId} className="mt-1 text-xs text-[#9B1C1C]" role="alert">
+            {destError}
+          </p>
+        ) : null}
       </div>
 
       <div>
-        <label className="text-xs font-semibold text-[#66736B]">
+        <label htmlFor={aliasId} className="text-xs font-semibold text-[#66736B]">
           Alias (opcional)
         </label>
         <input
+          id={aliasId}
+          name="alias"
           value={alias}
           onChange={(e) => setAlias(e.target.value.slice(0, 24))}
           placeholder="Mama, Juan…"
-          className="mt-1 h-11 w-full rounded-[8px] border border-[#DDE4DC] bg-white px-3 text-sm text-[#17211B] outline-none focus:border-[#0E7C4F]"
+          enterKeyHint="done"
+          className="mt-1 h-11 w-full rounded-[8px] border border-[#DDE4DC] bg-white px-3 text-sm text-[#17211B] outline-none focus:border-[#0E7C4F] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F]"
         />
       </div>
 
@@ -282,13 +369,16 @@ export function SendUsdcPanel() {
                   <p className="text-sm font-semibold text-[#17211B]">
                     {item.alias || "Sin alias"}
                   </p>
-                  <p className="break-all font-mono text-[10px] text-[#66736B]">
-                    {item.address}
+                  <p
+                    className="font-mono text-[10px] text-[#66736B]"
+                    title={item.address}
+                  >
+                    {formatShortStellarGAddress(item.address)}
                   </p>
                 </button>
                 <button
                   type="button"
-                  className="shrink-0 text-[11px] font-semibold text-[#9B1C1C]"
+                  className="min-h-9 shrink-0 px-1 text-[11px] font-semibold text-[#9B1C1C]"
                   onClick={() => {
                     removeSavedRecipient(item.address);
                     setRecipients(getSavedRecipients());
@@ -303,21 +393,21 @@ export function SendUsdcPanel() {
       )}
 
       {(step === "error" || error) && (
-        <p className="rounded-[8px] border border-[#F5C6CB] bg-[#FDECEE] px-3 py-2 text-xs text-[#9B1C1C]">
+        <p
+          id={formErrorId}
+          className="rounded-[8px] border border-[#F5C6CB] bg-[#FDECEE] px-3 py-2 text-xs text-[#9B1C1C]"
+          role="alert"
+        >
           {error}
         </p>
       )}
 
       <Button
-        className="h-12 w-full rounded-[8px] bg-[#0E7C4F] text-base font-semibold text-white hover:bg-[#0A5F3C] disabled:opacity-60"
-        disabled={!canSubmit}
-        onClick={() => {
-          setError(null);
-          setStep("confirm");
-        }}
+        type="submit"
+        className="h-12 w-full rounded-[8px] bg-[#0E7C4F] text-base font-semibold text-white hover:bg-[#0A5F3C]"
       >
         Continuar
       </Button>
-    </div>
+    </form>
   );
 }
