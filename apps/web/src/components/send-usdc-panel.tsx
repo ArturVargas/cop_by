@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Reserve } from "@cavos/reserve";
 
 import { Button } from "@/components/ui/button";
 import { useStellarWallet } from "@/hooks/use-stellar-wallet";
@@ -12,6 +11,7 @@ import {
   saveSavedRecipient,
   type SavedRecipient,
 } from "@/lib/saved-recipients";
+import { sendUsdc } from "@/lib/send-usdc";
 import {
   isStellarGAddress,
   normalizeStellarGAddress,
@@ -29,6 +29,9 @@ function humanizeSendError(message: string) {
   }
   if (lower.includes("reject") || lower.includes("denied")) {
     return "Firma rechazada. Intenta de nuevo.";
+  }
+  if (lower.includes("path_moved") || lower.includes("re-quote")) {
+    return "La ruta de network fee se movio en testnet. Intenta de nuevo en unos segundos.";
   }
   if (lower.includes("path") || lower.includes("no_path")) {
     return "No hay ruta para la network fee en USDC. Intenta mas tarde.";
@@ -54,7 +57,6 @@ export function SendUsdcPanel() {
   const {
     status,
     address,
-    usdc,
     usdcBalance,
     trustlineReady,
     wallet,
@@ -104,18 +106,11 @@ export function SendUsdcPanel() {
     setTxHash(null);
 
     try {
-      const reserve = await Reserve.connect(CAVOS_NETWORK);
-      const token = `${usdc.code}:${usdc.issuer}`;
-      const { hash } = await reserve.pay(
-        {
-          source: wallet.address,
-          destination: normalizedDest,
-          amount: amountNumber.toFixed(7).replace(/\.?0+$/, ""),
-          token,
-          maxSend: "1",
-        },
-        (xdr) => wallet.signXdr(xdr)
-      );
+      const hash = await sendUsdc({
+        wallet,
+        destination: normalizedDest,
+        amount: amountNumber.toFixed(7).replace(/\.?0+$/, ""),
+      });
 
       saveSavedRecipient({ address: normalizedDest, alias });
       setRecipients(getSavedRecipients());
@@ -196,7 +191,8 @@ export function SendUsdcPanel() {
             <p className="mt-2 text-sm text-[#66736B]">Alias: {alias}</p>
           ) : null}
           <p className="mt-3 text-[11px] text-[#66736B]">
-            Network fee se paga en USDC via Cavos Reserve (tope maxSend 1 USDC).
+            Network fee la cubre Cavos (relayer). Si el destino no tiene
+            trustline, se deja claimable via Reserve.
           </p>
         </div>
         {error && step === "sending" ? null : null}
