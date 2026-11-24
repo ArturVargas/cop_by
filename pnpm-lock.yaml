@@ -95,7 +95,7 @@ importers:
         version: 0.6.1(react-dom@18.3.1)(react@18.3.1)(typescript@5.9.3)
       '@cavos/reserve':
         specifier: ^0.1.3
-        version: 0.1.3(@stellar/stellar-sdk@17.4.0)
+        version: 0.1.3(@stellar/stellar-sdk@16.4.1)
       '@neondatabase/serverless':
         specifier: ^0.10.4
         version: 0.10.4
@@ -109,8 +109,8 @@ importers:
         specifier: ^2.0.0
         version: 2.2.11(@tanstack/react-query@5.101.0)(@types/react@18.3.31)(react-dom@18.3.1)(react@18.3.1)(typescript@5.9.3)(viem@2.52.2)(wagmi@2.19.5)
       '@stellar/stellar-sdk':
-        specifier: ^17.4.0
-        version: 17.4.0
+        specifier: ^16.4.1
+        version: 16.4.1
       '@tanstack/react-query':
         specifier: ^5.0.0
         version: 5.101.0(react@18.3.1)
@@ -450,12 +450,12 @@ packages:
       - zod
     dev: false
 
-  /@cavos/reserve@0.1.3(@stellar/stellar-sdk@17.4.0):
+  /@cavos/reserve@0.1.3(@stellar/stellar-sdk@16.4.1):
     resolution: {integrity: sha512-wporM0F64WhZal8w2GVAC52TFnWXGj2kuBB/Gblk9zaIO8qdObCN7G4R1Cce64kgS9mct1Y/8bQoRldFwHIU3Q==}
     peerDependencies:
       '@stellar/stellar-sdk': '>=12'
     dependencies:
-      '@stellar/stellar-sdk': 17.4.0
+      '@stellar/stellar-sdk': 16.4.1
     dev: false
 
   /@coinbase/cdp-sdk@1.51.0(typescript@5.9.3):
@@ -969,18 +969,6 @@ packages:
       '@ethersproject/properties': 5.8.0
       '@ethersproject/strings': 5.8.0
     dev: true
-
-  /@exodus/bytes@1.16.0(@noble/hashes@2.4.0):
-    resolution: {integrity: sha512-IcpW84uEn3N7ETtNZMlxKhfl6Pec8rUNGOTBtWbK1FKhJxIFAptZyVrvVRVBimAJxJCgc3PxepxkdWWG4DVzfA==}
-    engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
-    peerDependencies:
-      '@noble/hashes': ^1.8.0 || ^2.0.0
-    peerDependenciesMeta:
-      '@noble/hashes':
-        optional: true
-    dependencies:
-      '@noble/hashes': 2.4.0
-    dev: false
 
   /@expo/config-plugins@57.0.13(typescript@5.9.3):
     resolution: {integrity: sha512-L/xRrE9kr5bzHGiRmaYliRvfc5OjUt5AdCYmeyRISpn7OGdE6S3W9Dv4wmacR3jX93LaaL7Yg+5pvuDRxEIKVw==}
@@ -3837,11 +3825,6 @@ packages:
     engines: {node: '>=20.0.0', pnpm: '>=9.0.0'}
     dev: false
 
-  /@stellar/js-xdr@5.0.0:
-    resolution: {integrity: sha512-HBDNKnxr+ecdaEmbZ0mcKkirOF8tXXEbWSw34P3wT40Tn3g+u+cCH17xAWZymzscq8cojHB8340pR8QNVaD32w==}
-    engines: {node: '>=22.0.0', pnpm: '>=10.0.0'}
-    dev: false
-
   /@stellar/stellar-sdk@16.4.1:
     resolution: {integrity: sha512-0kT+ShOUE6dc0smLEsajuizss1hvlGDsCooM88FqgxNOCKpY8IuQPzCs75RNKMSMITz+dX7KZ5qGhQ2EWGMTTg==}
     engines: {node: '>=22.0.0'}
@@ -3854,28 +3837,6 @@ packages:
       base32.js: 0.1.0
       bignumber.js: 11.1.5
       buffer: 6.0.3
-      commander: 14.0.3
-      eventsource: 4.1.1
-      feaxios: 0.0.23
-      smol-toml: 1.9.1
-      uint8array-extras: 1.6.0
-    transitivePeerDependencies:
-      - debug
-      - supports-color
-    dev: false
-
-  /@stellar/stellar-sdk@17.4.0:
-    resolution: {integrity: sha512-IX6gi62yWQ+6Oz56LsVEEeSViSOWJL3BkttftwVmVsu+62nLTWNVsCmTWEzwgNLT/q5HGP25OnlU+hhy2E4wwA==}
-    engines: {node: '>=22.12.0'}
-    hasBin: true
-    dependencies:
-      '@exodus/bytes': 1.16.0(@noble/hashes@2.4.0)
-      '@noble/ed25519': 3.2.0
-      '@noble/hashes': 2.4.0
-      '@stellar/js-xdr': 5.0.0
-      '@types/json-schema': 7.0.15
-      axios: 1.20.0
-      bignumber.js: 11.1.5
       commander: 14.0.3
       eventsource: 4.1.1
       feaxios: 0.0.23
@@ -4120,10 +4081,6 @@ packages:
       '@types/minimatch': 6.0.0
       '@types/node': 20.19.43
     dev: true
-
-  /@types/json-schema@7.0.15:
-    resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
-    dev: false
 
   /@types/json5@0.0.29:
     resolution: {integrity: sha512-dRLjCWHYg4oaA77cxO64oO+7JwCwnIzkZPdrrC71jQmQtlhM556pwKo5bUzqvZndkVbeFLIIi+9TC40JNF5hNQ==}
