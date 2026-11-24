@@ -8,3 +8,10 @@ export function isStellarGAddress(value: string): boolean {
 export function normalizeStellarGAddress(value: string): string {
   return value.trim().toUpperCase();
 }
+
+/** UI-only short form, e.g. GANTU....MT6Z5I. Copy/logs keep the full G… */
+export function formatShortStellarGAddress(value: string): string {
+  const normalized = normalizeStellarGAddress(value);
+  if (normalized.length < 12) return normalized;
+  return `${normalized.slice(0, 5)}....${normalized.slice(-6)}`;
+}
