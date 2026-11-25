@@ -37,7 +37,7 @@ export function OnboardingScreen({ onStart }: { onStart: () => void }) {
           USDC en Stellar, listo para pesos
         </h1>
         <p className="mt-2 text-sm leading-5 text-[#66736B]">
-          Wallet embebida con Cavos. Sin MiniPay ni extension.
+          Non-custodial Wallet
         </p>
         <ul className="mt-6 space-y-3">
           {bullets.map((bullet) => (
@@ -49,9 +49,6 @@ export function OnboardingScreen({ onStart }: { onStart: () => void }) {
             </li>
           ))}
         </ul>
-        <p className="mt-5 text-xs leading-5 text-[#66736B]">
-          Hardware-isolated, non-custodial. Tu confirmas cada movimiento.
-        </p>
         <Button
           className="mt-6 h-12 w-full rounded-[8px] bg-[#6D45B8] text-base font-semibold text-white hover:bg-[#56359A]"
           onClick={onStart}
