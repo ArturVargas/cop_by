@@ -108,6 +108,9 @@ typechain-types/
 # Deployment platforms
 .vercel/
 .netlify/
+.open-next/
+.wrangler/
+.dev.vars*
 
 # Local certificates and keys
 *.pem

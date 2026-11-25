@@ -45,6 +45,12 @@ Detail: [docs/MVP-8D.md](./docs/MVP-8D.md).
 
 3. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
+## Stellar hosting
+
+The Stellar app is configured for Cloudflare Workers at `stellar.copby.money`.
+See [docs/DEPLOY-CLOUDFLARE.md](./docs/DEPLOY-CLOUDFLARE.md) for Cavos configuration,
+build variables, deployment, and verification.
+
 ## Contributing
 
 We welcome external contributors. Please read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening an issue or pull request.
@@ -73,7 +79,7 @@ This is a monorepo managed by Turborepo with the following structure:
 
 ## Tech Stack
 
-- **Framework**: Next.js 14 with App Router
+- **Framework**: Next.js 15 with App Router
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
 - **UI Components**: shadcn/ui
