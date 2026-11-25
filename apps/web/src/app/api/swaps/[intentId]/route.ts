@@ -16,9 +16,10 @@ type UpdateSwapBody = {
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { intentId: string } }
+  { params }: { params: Promise<{ intentId: string }> }
 ) {
   try {
+    const { intentId } = await params;
     const body = (await request.json()) as UpdateSwapBody;
     const tokensSpent = body.tokensSpent === undefined ? null : JSON.stringify(body.tokensSpent);
     const squidRequestIds =
@@ -39,7 +40,7 @@ export async function PATCH(
         onchain_log_tx_hash = COALESCE(${body.onchainLogTxHash ?? null}, onchain_log_tx_hash),
         error = COALESCE(${body.error ?? null}, error),
         updated_at = NOW()
-      WHERE intent_id = ${params.intentId}
+      WHERE intent_id = ${intentId}
       RETURNING *
     `;
 

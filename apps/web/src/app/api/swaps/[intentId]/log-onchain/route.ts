@@ -93,13 +93,14 @@ function formatSwapMemo(swap: {
 
 export async function POST(
   _request: Request,
-  { params }: { params: { intentId: string } }
+  { params }: { params: Promise<{ intentId: string }> }
 ) {
   try {
+    const { intentId } = await params;
     await ensureSwapTable();
     const [swap] = await getSql()`
       SELECT * FROM swap_intents
-      WHERE intent_id = ${params.intentId}
+      WHERE intent_id = ${intentId}
     `;
 
     if (!swap) return NextResponse.json({ error: "Swap not found" }, { status: 404 });
@@ -147,7 +148,7 @@ export async function POST(
         status = 'logged',
         onchain_log_tx_hash = ${hash},
         updated_at = NOW()
-      WHERE intent_id = ${params.intentId}
+      WHERE intent_id = ${intentId}
     `;
 
     return NextResponse.json({ txHash: hash });

@@ -11,9 +11,10 @@ type UpdateTransferBody = {
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { transferId: string } }
+  { params }: { params: Promise<{ transferId: string }> }
 ) {
   try {
+    const { transferId } = await params;
     const body = (await request.json()) as UpdateTransferBody;
     await ensureTransferTable();
 
@@ -24,7 +25,7 @@ export async function PATCH(
         onchain_log_tx_hash = COALESCE(${body.onchainLogTxHash ?? null}, onchain_log_tx_hash),
         error = COALESCE(${body.error ?? null}, error),
         updated_at = NOW()
-      WHERE transfer_id = ${params.transferId}
+      WHERE transfer_id = ${transferId}
       RETURNING *
     `;
 
