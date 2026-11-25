@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
-import { Check, Copy } from "lucide-react";
+import Link from "next/link";
+import { Check, Copy, History } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -266,6 +267,14 @@ export function StellarHome() {
               {bootstrapping ? "Preparando…" : "Preparar cuenta"}
             </Button>
           </>
+        )}
+        {status === "ready" && (
+          <Button asChild variant="outline" className="mt-4 h-11 w-full">
+            <Link href="/activity">
+              <History className="mr-2 h-4 w-4" aria-hidden="true" />
+              Historial de transacciones
+            </Link>
+          </Button>
         )}
       </section>
 
