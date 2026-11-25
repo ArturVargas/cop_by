@@ -11,7 +11,11 @@ import {
   saveSavedRecipient,
   type SavedRecipient,
 } from "@/lib/saved-recipients";
-import { sendUsdc } from "@/lib/send-usdc";
+import {
+  MEMO_TEXT_MAX_BYTES,
+  normalizeMemoText,
+  sendUsdc,
+} from "@/lib/send-usdc";
 import {
   formatShortStellarGAddress,
   isStellarGAddress,
@@ -39,6 +43,9 @@ function humanizeSendError(message: string) {
   }
   if (lower.includes("bootstrap_busy")) {
     return "La red esta ocupada creando cuentas. Reintenta en unos segundos.";
+  }
+  if (lower.includes("memo requiere destino")) {
+    return "Con memo, el destinatario debe tener trustline USDC.";
   }
   if (message.startsWith("kit/") || message.startsWith("reserve")) {
     return "No se pudo completar el envio. Revisa el destino e intenta de nuevo.";
@@ -68,19 +75,23 @@ export function SendUsdcPanel() {
   const amountId = `${formId}-amount`;
   const destId = `${formId}-dest`;
   const aliasId = `${formId}-alias`;
+  const memoId = `${formId}-memo`;
   const amountErrorId = `${formId}-amount-error`;
   const destErrorId = `${formId}-dest-error`;
+  const memoErrorId = `${formId}-memo-error`;
   const formErrorId = `${formId}-form-error`;
 
   const [destination, setDestination] = useState("");
   const [alias, setAlias] = useState("");
   const [amount, setAmount] = useState("");
+  const [memo, setMemo] = useState("");
   const [step, setStep] = useState<SendStep>("form");
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [recipients, setRecipients] = useState<SavedRecipient[]>([]);
   const [amountTouched, setAmountTouched] = useState(false);
   const [destTouched, setDestTouched] = useState(false);
+  const [memoTouched, setMemoTouched] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
@@ -115,15 +126,27 @@ export function SendUsdcPanel() {
     return null;
   })();
 
+  const normalizedMemo = useMemo(() => normalizeMemoText(memo), [memo]);
+  const memoError = (() => {
+    if (!memo.trim()) return null;
+    const bytes = new TextEncoder().encode(memo.trim()).length;
+    if (bytes > MEMO_TEXT_MAX_BYTES) {
+      return `Memo max ${MEMO_TEXT_MAX_BYTES} bytes (ahora ${bytes}).`;
+    }
+    return null;
+  })();
+
   const showAmountError = (amountTouched || submitted) && !!amountError;
   const showDestError = (destTouched || submitted) && !!destError;
+  const showMemoError = (memoTouched || submitted) && !!memoError;
 
   const canSend =
     status === "ready" &&
     trustlineReady &&
     !!wallet &&
     !amountError &&
-    !destError;
+    !destError &&
+    !memoError;
 
   const onPickRecipient = (item: SavedRecipient) => {
     setDestination(item.address);
@@ -144,6 +167,7 @@ export function SendUsdcPanel() {
         wallet,
         destination: normalizedDest,
         amount: amountNumber.toFixed(7).replace(/\.?0+$/, ""),
+        memo: normalizedMemo || undefined,
       });
 
       saveSavedRecipient({ address: normalizedDest, alias });
@@ -162,7 +186,7 @@ export function SendUsdcPanel() {
     event.preventDefault();
     setSubmitted(true);
     setError(null);
-    if (amountError || destError) return;
+    if (amountError || destError || memoError) return;
     setStep("confirm");
   };
 
@@ -210,10 +234,12 @@ export function SendUsdcPanel() {
           onClick={() => {
             setStep("form");
             setAmount("");
+            setMemo("");
             setTxHash(null);
             setError(null);
             setSubmitted(false);
             setAmountTouched(false);
+            setMemoTouched(false);
           }}
         >
           Enviar otro
@@ -240,9 +266,18 @@ export function SendUsdcPanel() {
           {alias ? (
             <p className="mt-2 text-sm text-[#66736B]">Alias: {alias}</p>
           ) : null}
+          {normalizedMemo ? (
+            <>
+              <p className="mt-3 text-xs font-semibold text-[#66736B]">Memo</p>
+              <p className="mt-1 break-all font-mono text-xs text-[#17211B]">
+                {normalizedMemo}
+              </p>
+            </>
+          ) : null}
           <p className="mt-3 text-[11px] text-[#66736B]">
-            Network fee la cubre Cavos (relayer). Si el destino no tiene
-            trustline, se deja claimable via Reserve.
+            {normalizedMemo
+              ? "Con memo se usa Payment classic; el destino necesita trustline USDC. Network fee la cubre Cavos (relayer)."
+              : "Network fee la cubre Cavos (relayer). Si el destino no tiene trustline, se deja claimable via Reserve."}
           </p>
         </div>
         {step === "sending" ? (
@@ -350,9 +385,42 @@ export function SendUsdcPanel() {
           value={alias}
           onChange={(e) => setAlias(e.target.value.slice(0, 24))}
           placeholder="Mama, Juan…"
-          enterKeyHint="done"
+          enterKeyHint="next"
           className="mt-1 h-11 w-full rounded-[8px] border border-[#DDE4DC] bg-white px-3 text-sm text-[#17211B] outline-none focus:border-[#0E7C4F] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F]"
         />
+      </div>
+
+      <div>
+        <label htmlFor={memoId} className="text-xs font-semibold text-[#66736B]">
+          Memo (opcional)
+        </label>
+        <input
+          id={memoId}
+          name="memo"
+          autoComplete="off"
+          spellCheck={false}
+          enterKeyHint="done"
+          maxLength={MEMO_TEXT_MAX_BYTES}
+          aria-invalid={showMemoError}
+          aria-describedby={showMemoError ? memoErrorId : undefined}
+          value={memo}
+          onChange={(e) => {
+            setMemo(e.target.value.slice(0, MEMO_TEXT_MAX_BYTES));
+            setError(null);
+          }}
+          onBlur={() => setMemoTouched(true)}
+          placeholder="SHIP-…"
+          className="mt-1 h-11 w-full rounded-[8px] border border-[#DDE4DC] bg-white px-3 font-mono text-sm text-[#17211B] outline-none focus:border-[#0E7C4F] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F] aria-[invalid=true]:border-[#9B1C1C]"
+        />
+        <p className="mt-1 text-[11px] text-[#66736B]">
+          Hasta {MEMO_TEXT_MAX_BYTES} caracteres. Con memo el destino debe tener
+          trustline USDC.
+        </p>
+        {showMemoError ? (
+          <p id={memoErrorId} className="mt-1 text-xs text-[#9B1C1C]" role="alert">
+            {memoError}
+          </p>
+        ) : null}
       </div>
 
       {recipients.length > 0 && (

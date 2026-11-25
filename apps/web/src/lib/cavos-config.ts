@@ -42,6 +42,13 @@ export function getStellarUsdc() {
   return CAVOS_NETWORK === "mainnet" ? STELLAR_USDC_MAINNET : STELLAR_USDC_TESTNET;
 }
 
+/** Horizon REST for classic account load / optional direct submit. */
+export function getStellarHorizonUrl() {
+  return CAVOS_NETWORK === "mainnet"
+    ? "https://horizon.stellar.org"
+    : "https://horizon-testnet.stellar.org";
+}
+
 export function isCavosConfigured() {
   return CAVOS_APP_ID.length > 0;
 }
