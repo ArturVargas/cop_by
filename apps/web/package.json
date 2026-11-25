@@ -10,7 +10,8 @@
     "type-check": "tsc --noEmit",
     "cf:build": "opennextjs-cloudflare build",
     "cf:preview": "opennextjs-cloudflare preview",
-    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
+    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "test:stellar": "node scripts/test-stellar.mjs"
   },
   "dependencies": {
     "@cavos/kit": "^0.6.1",

@@ -32,5 +32,8 @@ jobs:
       - name: Type check web
         run: pnpm --filter web type-check
 
+      - name: Test Stellar wallet
+        run: pnpm --filter web test:stellar
+
       - name: Test contracts
         run: pnpm --filter hardhat test
