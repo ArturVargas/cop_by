@@ -271,15 +271,26 @@ export function StellarHome() {
 
       <HomeTabs active={tab} onChange={setTab} id={tabsBaseId} />
 
-      <HomeTabPanel tab="obtener" active={tab} baseId={tabsBaseId}>
+      <HomeTabPanel tab="recibir" active={tab} baseId={tabsBaseId}>
         <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
-          <p className="text-sm font-semibold text-[#17211B]">Obtener USDC</p>
+          <p className="text-sm font-semibold text-[#17211B]">Recibir USDC</p>
           <p className="mt-1 text-sm text-[#66736B]">
-            Copia tu cuenta y fondea desde otra wallet, o usa el faucet de Circle
-            en testnet. Depositar en la app llega mas adelante.
+            Comparte tu cuenta para recibir USDC desde otra wallet en Stellar
+            {CAVOS_NETWORK === "testnet" ? " Testnet." : "."}
           </p>
+          {address && (
+            <div className="mt-4">
+              <p className="break-all font-mono text-xs leading-5 text-[#17211B]">{address}</p>
+              <Button type="button" variant="outline" className="mt-3 h-11 w-full" onClick={() => void copyAddress()}>
+                <Copy className="mr-2 h-4 w-4" aria-hidden="true" />
+                {copyStatus === "ok" ? "Cuenta copiada" : copyStatus === "fail" ? "Reintentar copia" : "Copiar cuenta"}
+              </Button>
+            </div>
+          )}
           <p className="mt-3 text-[11px] text-[#66736B]">
-            Asset {usdc.code} · issuer en tooltip del saldo
+            {CAVOS_NETWORK === "testnet"
+              ? "Usa solo USDC de prueba en Stellar Testnet."
+              : "Envía únicamente USDC de la red Stellar a esta cuenta."}
           </p>
           <p className="mt-1 break-all font-mono text-[10px] text-[#66736B]" title={usdc.issuer}>
             {usdc.code}:{formatShortStellarGAddress(usdc.issuer)}

@@ -2,10 +2,10 @@
 
 import { useId, useRef, type ReactNode } from "react";
 
-export type HomeTab = "obtener" | "enviar" | "gastar";
+export type HomeTab = "recibir" | "enviar" | "gastar";
 
 const TABS: { id: HomeTab; label: string }[] = [
-  { id: "obtener", label: "Obtener" },
+  { id: "recibir", label: "Recibir" },
   { id: "enviar", label: "Enviar" },
   { id: "gastar", label: "Gastar" },
 ];
