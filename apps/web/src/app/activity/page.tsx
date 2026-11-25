@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { StellarReceipt } from "@/components/stellar-receipt";
+import type { StellarReceiptData } from "@/components/shareable-receipt";
+import { getRecipientAlias } from "@/lib/saved-recipients";
+import { formatUsdcAmount } from "@/lib/format-usdc";
 import { useStellarWallet } from "@/hooks/use-stellar-wallet";
 import { CAVOS_NETWORK } from "@/lib/cavos-config";
-import { formatUsdcAmount } from "@/lib/format-usdc";
 import { formatShortStellarGAddress } from "@/lib/stellar-address";
 import { stellarTransactionUrl, type StellarActivityItem, type StellarActivityPage } from "@/lib/stellar-activity";
 
@@ -17,10 +20,25 @@ export default function ActivityPage() {
   const [refresh, setRefresh] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<StellarActivityItem | null>(null);
   const items = history?.address === address ? history.items : [];
   const nextCursor = history?.address === address ? history.nextCursor : null;
 
-  useEffect(() => { setCursor(null); setHistory(null); }, [address]);
+  useEffect(() => { setCursor(null); setHistory(null); setSelected(null); }, [address]);
+
+  const receipt = useMemo<StellarReceiptData | null>(() => selected ? {
+    variant: "stellar-transfer",
+    direction: selected.direction,
+    delivery: selected.kind === "claimable" ? "claimable" : undefined,
+    amount: selected.amount,
+    senderAddress: selected.from,
+    recipientAddress: selected.to,
+    recipientAlias: getRecipientAlias(selected.to),
+    completedAt: selected.createdAt,
+    txHash: selected.txHash,
+    memo: selected.memo,
+    network: CAVOS_NETWORK,
+  } : null, [selected]);
 
   useEffect(() => {
     if (!address || status !== "ready") return;
@@ -69,6 +87,7 @@ export default function ActivityPage() {
       ) : (
         <>
           {address && <p className="mt-4 font-mono text-xs text-[#66736B]" title={address}>{formatShortStellarGAddress(address)}</p>}
+          {receipt ? <div className="mt-5"><StellarReceipt data={receipt} onDone={() => setSelected(null)} doneLabel="Volver a Actividad" /></div> : <>
           {error && (
             <div className="mt-5 rounded-[8px] bg-[#FDECEE] p-4 text-sm text-[#9B1C1C]" role="alert">
               <p>{error}</p>
@@ -101,12 +120,16 @@ export default function ActivityPage() {
                   </div>
                   {item.memo && <p className="mt-3 break-words text-xs text-[#66736B]">Memo: {item.memo}</p>}
                   {item.kind === "claimable" && <p className="mt-3 text-xs text-[#66736B]">Fondos reservados para reclamar. Revisa el estado actual en el explorador.</p>}
-                  <a href={stellarTransactionUrl(item.txHash)} target="_blank" rel="noreferrer" className="mt-2 inline-flex min-h-10 items-center text-sm font-semibold text-[#0E7C4F] underline">Ver en Stellar Expert</a>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4">
+                    {item.kind !== "conversion" && <button type="button" className="min-h-10 text-sm font-semibold text-[#6D45B8] underline" onClick={() => setSelected(item)}>Ver comprobante</button>}
+                    <a href={stellarTransactionUrl(item.txHash)} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center text-sm font-semibold text-[#0E7C4F] underline">Ver en Stellar Expert</a>
+                  </div>
                 </li>
               );
             })}
           </ul>
           {nextCursor && <Button type="button" variant="outline" className="mt-4 h-11 w-full" disabled={loading} onClick={() => setCursor(nextCursor)}>{loading ? "Cargando…" : "Cargar anteriores"}</Button>}
+          </>}
         </>
       )}
     </div>

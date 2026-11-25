@@ -14,15 +14,15 @@ function formatAddressPreview(address: string) {
 }
 
 export async function createReceiptImageBlob(element: HTMLElement) {
-  const { toPng } = await import("html-to-image");
-  const dataUrl = await toPng(element, {
+  const { toBlob } = await import("html-to-image");
+  const blob = await toBlob(element, {
     backgroundColor: "#ffffff",
     cacheBust: true,
     pixelRatio: 2,
+    skipFonts: true,
   });
-
-  const response = await fetch(dataUrl);
-  return response.blob();
+  if (!blob) throw new Error("No pudimos generar la imagen del comprobante.");
+  return blob;
 }
 
 export async function createReceiptPdfBlob(
@@ -139,7 +139,7 @@ export async function shareReceiptFile(
   const mimeType = kind === "pdf" ? "application/pdf" : "image/png";
   const file = new File([blob], `comprobante-cop-by.${extension}`, { type: mimeType });
 
-  if (navigator.canShare?.({ files: [file] })) {
+  if (navigator.share && navigator.canShare?.({ files: [file] })) {
     await navigator.share({
       files: [file],
       title: "Comprobante COP By",
@@ -147,12 +147,18 @@ export async function shareReceiptFile(
     return "shared";
   }
 
+  return downloadReceiptFile(blob, kind);
+}
+
+export function downloadReceiptFile(blob: Blob, kind: "pdf" | "png") {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `comprobante-cop-by.${extension}`;
+  link.download = `comprobante-cop-by.${kind}`;
+  document.body.append(link);
   link.click();
-  URL.revokeObjectURL(url);
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
   return "downloaded";
 }
 

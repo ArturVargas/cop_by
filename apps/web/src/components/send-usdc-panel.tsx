@@ -3,6 +3,8 @@
 import { FormEvent, useEffect, useId, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { StellarReceipt } from "@/components/stellar-receipt";
+import type { StellarReceiptData } from "@/components/shareable-receipt";
 import { useStellarWallet } from "@/hooks/use-stellar-wallet";
 import { CAVOS_NETWORK } from "@/lib/cavos-config";
 import {
@@ -53,14 +55,6 @@ function humanizeSendError(message: string) {
   return message;
 }
 
-function explorerTxUrl(hash: string) {
-  const base =
-    CAVOS_NETWORK === "mainnet"
-      ? "https://stellar.expert/explorer/public/tx/"
-      : "https://stellar.expert/explorer/testnet/tx/";
-  return `${base}${hash}`;
-}
-
 export function SendUsdcPanel() {
   const {
     status,
@@ -87,7 +81,7 @@ export function SendUsdcPanel() {
   const [memo, setMemo] = useState("");
   const [step, setStep] = useState<SendStep>("form");
   const [error, setError] = useState<string | null>(null);
-  const [txHash, setTxHash] = useState<string | null>(null);
+  const [receipt, setReceipt] = useState<StellarReceiptData | null>(null);
   const [recipients, setRecipients] = useState<SavedRecipient[]>([]);
   const [amountTouched, setAmountTouched] = useState(false);
   const [destTouched, setDestTouched] = useState(false);
@@ -160,26 +154,42 @@ export function SendUsdcPanel() {
 
     setStep("sending");
     setError(null);
-    setTxHash(null);
+    setReceipt(null);
 
     try {
+      const sentAmount = amountNumber.toFixed(7).replace(/\.?0+$/, "");
       const hash = await sendUsdc({
         wallet,
         destination: normalizedDest,
-        amount: amountNumber.toFixed(7).replace(/\.?0+$/, ""),
+        amount: sentAmount,
         memo: normalizedMemo || undefined,
       });
 
-      saveSavedRecipient({ address: normalizedDest, alias });
-      setRecipients(getSavedRecipients());
-      setTxHash(hash);
+      setReceipt({
+        variant: "stellar-transfer",
+        amount: sentAmount,
+        senderAddress: wallet.address,
+        recipientAddress: normalizedDest,
+        recipientAlias: alias.trim() || undefined,
+        memo: normalizedMemo || undefined,
+        network: CAVOS_NETWORK,
+        completedAt: new Date().toISOString(),
+        txHash: hash,
+      });
       setStep("done");
-      await refreshUsdcBalance();
     } catch (err) {
       const raw = err instanceof Error ? err.message : "Error al enviar USDC";
       setError(humanizeSendError(raw));
       setStep("error");
+      return;
     }
+    try {
+      saveSavedRecipient({ address: normalizedDest, alias });
+      setRecipients(getSavedRecipients());
+    } catch {
+      // Local recipient storage must not turn a confirmed transfer into a failure.
+    }
+    void refreshUsdcBalance().catch(() => undefined);
   };
 
   const onFormSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -206,45 +216,22 @@ export function SendUsdcPanel() {
     );
   }
 
-  if (step === "done" && txHash) {
+  if (step === "done" && receipt) {
     return (
-      <div className="flex flex-col gap-4">
-        <div
-          className="rounded-[8px] border border-[#D5EADF] bg-[#E6F4EE] p-4"
-          role="status"
-        >
-          <p className="text-sm font-semibold text-[#0E7C4F]">Envio completado</p>
-          <p className="mt-1 text-sm text-[#17211B]">
-            {amount} USDC enviados
-          </p>
-          <p className="mt-3 break-all font-mono text-[11px] text-[#66736B]">
-            {txHash}
-          </p>
-        </div>
-        <a
-          href={explorerTxUrl(txHash)}
-          target="_blank"
-          rel="noreferrer"
-          className="text-sm font-semibold text-[#0E7C4F] underline"
-        >
-          Ver en Stellar Expert
-        </a>
-        <Button
-          className="h-11 w-full rounded-[8px] bg-[#0E7C4F] text-sm font-semibold text-white hover:bg-[#0A5F3C]"
-          onClick={() => {
+      <StellarReceipt
+          data={receipt}
+          doneLabel="Enviar otro"
+          onDone={() => {
             setStep("form");
             setAmount("");
             setMemo("");
-            setTxHash(null);
+            setReceipt(null);
             setError(null);
             setSubmitted(false);
             setAmountTouched(false);
             setMemoTouched(false);
           }}
-        >
-          Enviar otro
-        </Button>
-      </div>
+      />
     );
   }
 
