@@ -20,6 +20,8 @@ export async function createReceiptImageBlob(element: HTMLElement) {
     cacheBust: true,
     pixelRatio: 2,
     skipFonts: true,
+    // Page centering margins must not offset the clone inside its image bounds.
+    style: { margin: "0" },
   });
   if (!blob) throw new Error("No pudimos generar la imagen del comprobante.");
   return blob;

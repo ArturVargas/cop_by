@@ -35,5 +35,8 @@ jobs:
       - name: Test Stellar wallet
         run: pnpm --filter web test:stellar
 
+      - name: Test receipt PNG bounds
+        run: pnpm --filter web test:receipt-export
+
       - name: Test contracts
         run: pnpm --filter hardhat test
