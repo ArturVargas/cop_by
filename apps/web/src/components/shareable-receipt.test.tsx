@@ -63,3 +63,13 @@ test("claimable receipts describe a reservation instead of asserting receipt of 
   assert.match(html, /Monto reservado/);
   assert.doesNotMatch(html, /USDC recibido|Recibiste|Envío completado/);
 });
+
+
+import { formatUsdcAmountLabel } from "../lib/format-usdc";
+test("USDC balance labels show exactly two decimals without rounding the transfer value", () => {
+  const format = formatUsdcAmountLabel;
+  assert.equal(format("15.0000000"), "15.00");
+  assert.equal(format("0.1234567"), "0.12");
+  assert.equal(format("1.0050000"), "1.01");
+  assert.equal(format("922337203685.4775807"), "922337203685.48");
+});

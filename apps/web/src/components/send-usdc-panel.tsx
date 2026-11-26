@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 const StellarReceipt = lazy(() => import("@/components/stellar-receipt").then((module) => ({ default: module.StellarReceipt })));
 import type { StellarReceiptData } from "@/components/shareable-receipt";
 import { useStellarWallet } from "@/hooks/use-stellar-wallet";
-import { formatUsdcAmount } from "@/lib/format-usdc";
+import { formatUsdcAmount, formatUsdcAmountLabel } from "@/lib/format-usdc";
 import { CAVOS_NETWORK } from "@/lib/cavos-config";
 import {
   getSavedRecipients,
@@ -333,7 +333,7 @@ export function SendUsdcPanel() {
             }
           }}
         >
-          Usar todo ({usdcBalance ?? "0"} USDC)
+          Usar todo ({formatUsdcAmountLabel(usdcBalance ?? "0")} USDC)
         </button>
         {showAmountError ? (
           <p id={amountErrorId} className="mt-1 text-xs text-wallet-negative" role="alert">
