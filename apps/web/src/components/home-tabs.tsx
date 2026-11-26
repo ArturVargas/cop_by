@@ -31,9 +31,8 @@ export function HomeTabs({
   const baseId = idProp ?? `home-tabs-${reactId}`;
   const listRef = useRef<HTMLDivElement>(null);
 
-  const selectByOffset = (offset: number) => {
-    const index = TABS.findIndex((tab) => tab.id === active);
-    const next = TABS[(index + offset + TABS.length) % TABS.length];
+  const selectIndex = (index: number) => {
+    const next = TABS[(index + TABS.length) % TABS.length];
     onChange(next.id);
     window.requestAnimationFrame(() => {
       listRef.current
@@ -51,16 +50,16 @@ export function HomeTabs({
       onKeyDown={(event) => {
         if (event.key === "ArrowRight") {
           event.preventDefault();
-          selectByOffset(1);
+          selectIndex(TABS.findIndex((tab) => tab.id === active) + 1);
         } else if (event.key === "ArrowLeft") {
           event.preventDefault();
-          selectByOffset(-1);
+          selectIndex(TABS.findIndex((tab) => tab.id === active) - 1);
         } else if (event.key === "Home") {
           event.preventDefault();
-          onChange(TABS[0].id);
+          selectIndex(0);
         } else if (event.key === "End") {
           event.preventDefault();
-          onChange(TABS[TABS.length - 1].id);
+          selectIndex(TABS.length - 1);
         }
       }}
     >

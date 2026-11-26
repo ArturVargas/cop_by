@@ -15,7 +15,7 @@ Preserve Spanish UI, "Non-custodial Wallet", Stellar Testnet and full receipt ve
 - [x] 2. Prepare transfer before confirmation: display delivery and maximum extra fee; never silently switch to a paid route. Tests: sponsored/claimable plans, exact amount/fee arithmetic, expired quote and receipt delivery.
 - [x] 3. Onboarding: native modal, scrollable short viewports, contained focus and dismissal. Browser: 568x320, Tab, Escape.
 - [x] 4. Copy: distinguish available/pending spending; explain memo and reserved funds without SDK jargon. Review actual states and labels.
-- [ ] 5. Keyboard: tabs Home/End focus; account disclosure state, Escape/outside dismissal. Browser assertions.
+- [x] 5. Keyboard: tabs Home/End focus; account disclosure state, Escape/outside dismissal. Browser assertions.
 - [ ] 6. Touch targets: minimum 44px for relevant Stellar actions and legible inputs. Browser measurements at 320px.
 - [ ] 7. Activity recovery: distinct loading/device/login/deployment/error actions. Render/check each state; preserve history and receipt navigation.
 - [ ] 8. Tokens: centralize current Stellar palette and apply it across the audited components, preserve exported-image colors. Detector plus screenshot comparison.
@@ -36,3 +36,5 @@ Task 2 verified: 14 unit tests and type-check pass. Exact amount parsing failed 
 Task 3 verified: native modal, contained Tab focus, reachable Start at 568x320 and Escape; type-check passed.
 
 Task 4 verified: onboarding matches current availability; memo hint is associated with input; SDK jargon removed from user messages. Unit suite and type-check passed.
+
+Task 5 verified: keyboard regression failed before implementation and now passes Home/End, expanded state, Escape focus return and pointer dismissal. Type-check passed.

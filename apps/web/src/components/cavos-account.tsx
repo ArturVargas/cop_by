@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { LogOut, Wallet } from "lucide-react";
 
 import { useStellarWallet } from "@/hooks/use-stellar-wallet";
@@ -27,6 +27,27 @@ export function CavosAccountControls() {
     isAuthenticated,
   } = useStellarWallet();
   const [menuOpen, setMenuOpen] = useState(false);
+  const accountRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuId = useId();
+  useEffect(() => {
+    if (!menuOpen) return;
+    const dismiss = (event: PointerEvent) => {
+      if (!accountRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        buttonRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [menuOpen]);
 
   if (!configured) {
     return (
@@ -71,12 +92,15 @@ export function CavosAccountControls() {
   }
 
   return (
-    <div className="relative flex items-center gap-1.5">
+    <div ref={accountRef} className="relative flex items-center gap-1.5" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMenuOpen(false); }}>
       <span className="inline-flex h-9 max-w-[140px] items-center truncate rounded-full border border-[#D5EADF] bg-[#E6F4EE] px-2.5 text-[11px] font-semibold text-[#0E7C4F]">
         {balanceError ? "Saldo sin actualizar" : `${formatUsdc(usdcBalance)} USDC`}
       </span>
       <button
         type="button"
+        ref={buttonRef}
+        aria-expanded={menuOpen}
+        aria-controls={menuId}
         aria-label="Cuenta"
         onClick={() => setMenuOpen((open) => !open)}
         className="inline-flex h-9 items-center rounded-full border border-[#DDE4DC] bg-white px-3 text-xs font-semibold text-[#17211B]"
@@ -84,7 +108,7 @@ export function CavosAccountControls() {
         Cuenta
       </button>
       {menuOpen && (
-        <div className="absolute right-0 top-11 z-50 w-44 rounded-[8px] border border-[#DDE4DC] bg-white p-1 shadow-sm">
+        <div id={menuId} className="absolute right-0 top-11 z-50 w-44 rounded-[8px] border border-[#DDE4DC] bg-white p-1 shadow-sm">
           <button
             type="button"
             onClick={() => {
