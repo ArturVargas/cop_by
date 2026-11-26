@@ -32,32 +32,14 @@ type SendStep = "form" | "preparing" | "confirm" | "sending" | "done" | "error";
 
 function humanizeSendError(message: string) {
   const lower = message.toLowerCase();
-  if (lower.includes("trustline") || lower.includes("op_no_trust")) {
-    return "El destinatario necesita trustline USDC, o tu cuenta no tiene USDC listo.";
-  }
-  if (lower.includes("underfunded") || lower.includes("balance")) {
-    return "Saldo USDC insuficiente para este envio.";
-  }
-  if (lower.includes("reject") || lower.includes("denied")) {
-    return "Firma rechazada. Intenta de nuevo.";
-  }
-  if (lower.includes("quote_expired")) return "El costo del envío venció. Pulsa Continuar para revisarlo de nuevo antes de confirmar.";
-  if (lower.includes("path_moved") || lower.includes("re-quote")) {
-    return "La ruta de network fee se movio en testnet. Intenta de nuevo en unos segundos.";
-  }
-  if (lower.includes("path") || lower.includes("no_path")) {
-    return "No hay ruta para la network fee en USDC. Intenta mas tarde.";
-  }
-  if (lower.includes("bootstrap_busy")) {
-    return "La red esta ocupada creando cuentas. Reintenta en unos segundos.";
-  }
-  if (lower.includes("memo requiere destino")) {
-    return "Con memo, el destinatario debe tener trustline USDC.";
-  }
-  if (message.startsWith("kit/") || message.startsWith("reserve")) {
-    return "No se pudo completar el envio. Revisa el destino e intenta de nuevo.";
-  }
-  return message;
+  if (lower.includes("quote_expired") || lower.includes("path_moved") || lower.includes("re-quote")) return "El costo cambió o venció. Pulsa Continuar para revisarlo antes de confirmar.";
+  if (lower.includes("trustline") || lower.includes("op_no_trust")) return "El destinatario necesita habilitar USDC en su cuenta. Pídele que lo revise antes de reintentar.";
+  if (lower.includes("underfunded") || lower.includes("balance")) return "No tienes saldo suficiente para cubrir el envío y su costo.";
+  if (lower.includes("reject") || lower.includes("denied")) return "No se autorizó la firma. Puedes revisar el envío e intentarlo de nuevo.";
+  if (lower.includes("no_path") || lower.includes("path")) return "No pudimos calcular el costo del envío. Reintenta más tarde.";
+  if (lower.includes("bootstrap_busy")) return "La red está ocupada preparando cuentas. Reintenta en unos segundos.";
+  if (/^(No pudimos|Saldo insuficiente|Revisa la cuenta|La cuenta cambió|El monto|Usa un monto|Con memo|El memo)/.test(message)) return message;
+  return "No pudimos confirmar el resultado. Revisa tu historial antes de intentar otro envío.";
 }
 
 export function SendUsdcPanel() {
@@ -78,6 +60,7 @@ export function SendUsdcPanel() {
   const memoId = `${formId}-memo`;
   const amountErrorId = `${formId}-amount-error`;
   const destErrorId = `${formId}-dest-error`;
+  const memoHintId = `${formId}-memo-hint`;
   const memoErrorId = `${formId}-memo-error`;
   const formErrorId = `${formId}-form-error`;
 
@@ -120,7 +103,7 @@ export function SendUsdcPanel() {
 
   const destError = (() => {
     if (!destination.trim()) return "Ingresa una cuenta G…";
-    if (!isStellarGAddress(normalizedDest)) return "Cuenta Stellar invalida.";
+    if (!isStellarGAddress(normalizedDest)) return "La cuenta Stellar no es válida. Revisa la dirección copiada.";
     if (address && normalizedDest === address) {
       return "No puedes enviarte a ti mismo.";
     }
@@ -132,7 +115,7 @@ export function SendUsdcPanel() {
     if (!memo.trim()) return null;
     const bytes = new TextEncoder().encode(memo.trim()).length;
     if (bytes > MEMO_TEXT_MAX_BYTES) {
-      return `Memo max ${MEMO_TEXT_MAX_BYTES} bytes (ahora ${bytes}).`;
+      return "El memo es demasiado largo. Acórtalo; algunos símbolos ocupan más espacio.";
     }
     return null;
   })();
@@ -260,7 +243,7 @@ export function SendUsdcPanel() {
     return (
       <div className="flex flex-col gap-4" aria-busy={step === "sending"}>
         <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
-          <p className="text-xs font-semibold text-[#66736B]">Confirmas enviar</p>
+          <p className="text-xs font-semibold text-[#66736B]">Revisa tu envío</p>
           <p className="mt-2 text-2xl font-bold text-[#17211B]">
             {formatUsdcAmount(plan.amount)} <span className="text-base text-[#66736B]">USDC</span>
           </p>
@@ -294,7 +277,7 @@ export function SendUsdcPanel() {
         </div>
         {step === "sending" ? (
           <p className="text-sm text-[#66736B]" role="status">
-            Firmando envio…
+            Enviando USDC…
           </p>
         ) : null}
         <Button
@@ -302,7 +285,7 @@ export function SendUsdcPanel() {
           disabled={step === "sending"}
           onClick={() => void onConfirmSend()}
         >
-          {step === "sending" ? "Firmando…" : "Confirmar envio"}
+          {step === "sending" ? "Enviando…" : "Confirmar envío"}
         </Button>
         <Button
           variant="outline"
@@ -310,7 +293,7 @@ export function SendUsdcPanel() {
           disabled={step === "sending"}
           onClick={() => setStep("form")}
         >
-          Atras
+          Volver
         </Button>
       </div>
     );
@@ -361,7 +344,7 @@ export function SendUsdcPanel() {
 
       <div>
         <label htmlFor={destId} className="text-xs font-semibold text-[#66736B]">
-          Destinatario (G…) <span aria-hidden="true">*</span>
+          Cuenta Stellar del destinatario <span aria-hidden="true">*</span>
         </label>
         <input
           id={destId}
@@ -397,7 +380,7 @@ export function SendUsdcPanel() {
           name="alias"
           value={alias}
           onChange={(e) => setAlias(e.target.value.slice(0, 24))}
-          placeholder="Mama, Juan…"
+          placeholder="Mamá, Juan…"
           enterKeyHint="next"
           className="mt-1 h-11 w-full rounded-[8px] border border-[#DDE4DC] bg-white px-3 text-sm text-[#17211B] outline-none focus:border-[#0E7C4F] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F]"
         />
@@ -415,19 +398,18 @@ export function SendUsdcPanel() {
           enterKeyHint="done"
           maxLength={MEMO_TEXT_MAX_BYTES}
           aria-invalid={showMemoError}
-          aria-describedby={showMemoError ? memoErrorId : undefined}
+          aria-describedby={[memoHintId, showMemoError ? memoErrorId : null].filter(Boolean).join(" ")}
           value={memo}
           onChange={(e) => {
             setMemo(e.target.value.slice(0, MEMO_TEXT_MAX_BYTES));
             setError(null);
           }}
           onBlur={() => setMemoTouched(true)}
-          placeholder="SHIP-…"
+          placeholder="Referencia del destinatario"
           className="mt-1 h-11 w-full rounded-[8px] border border-[#DDE4DC] bg-white px-3 font-mono text-sm text-[#17211B] outline-none focus:border-[#0E7C4F] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F] aria-[invalid=true]:border-[#9B1C1C]"
         />
-        <p className="mt-1 text-[11px] text-[#66736B]">
-          Hasta {MEMO_TEXT_MAX_BYTES} caracteres. Con memo el destino debe tener
-          trustline USDC.
+        <p id={memoHintId} className="mt-1 text-[11px] text-[#66736B]">
+          Añádelo solo si el destinatario te lo pide. Hasta {MEMO_TEXT_MAX_BYTES} caracteres simples; algunos símbolos ocupan más espacio. El destinatario debe tener USDC habilitado.
         </p>
         {showMemoError ? (
           <p id={memoErrorId} className="mt-1 text-xs text-[#9B1C1C]" role="alert">

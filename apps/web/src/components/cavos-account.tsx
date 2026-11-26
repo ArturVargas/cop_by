@@ -94,7 +94,7 @@ export function CavosAccountControls() {
             className="flex w-full items-center gap-2 rounded-[6px] px-3 py-2 text-left text-xs font-semibold text-[#17211B] hover:bg-[#F7F8F5]"
           >
             <LogOut className="h-3.5 w-3.5" />
-            Cerrar sesion
+            Cerrar sesión
           </button>
         </div>
       )}

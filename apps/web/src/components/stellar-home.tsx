@@ -147,7 +147,7 @@ export function StellarHome() {
           className="h-12 w-full rounded-[8px] bg-[#0E7C4F] text-base font-semibold text-white hover:bg-[#0A5F3C]"
           onClick={openModal}
         >
-          Login
+          Entrar
         </Button>
       </div>
     );
@@ -156,9 +156,9 @@ export function StellarHome() {
   if (status === "needs-device-approval" || status === "needs-relogin") {
     return (
       <div className="mx-auto flex w-full max-w-md flex-col gap-4 px-4 py-10 sm:max-w-lg">
-        <h1 className="text-2xl font-bold text-[#17211B]">Confirma que eres tu</h1>
+        <h1 className="text-2xl font-bold text-[#17211B]">Confirma que eres tú</h1>
         <p className="text-sm text-[#66736B]">
-          Para abrir tu cuenta en este dispositivo, vuelve a iniciar sesion.
+          Para abrir tu cuenta en este dispositivo, vuelve a iniciar sesión.
         </p>
         {address && (
           <p
@@ -172,7 +172,7 @@ export function StellarHome() {
           className="h-12 w-full rounded-[8px] bg-[#0E7C4F] text-base font-semibold text-white hover:bg-[#0A5F3C]"
           onClick={openModal}
         >
-          Login
+          Entrar
         </Button>
         {status === "needs-device-approval" && approveDeviceWithPasskey && (
           <Button
@@ -180,7 +180,7 @@ export function StellarHome() {
             className="h-12 w-full rounded-[8px]"
             onClick={() => void approveDeviceWithPasskey()}
           >
-            Usar passkey
+            Usar clave de acceso
           </Button>
         )}
       </div>
@@ -315,9 +315,9 @@ export function StellarHome() {
 
       <HomeTabPanel tab="gastar" active={tab} baseId={tabsBaseId}>
         <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
-          <p className="text-sm font-semibold text-[#17211B]">Gastar a pesos</p>
+          <p className="text-sm font-semibold text-[#17211B]">Pagos a pesos · Próximamente</p>
           <p className="mt-1 text-sm text-[#66736B]">
-            Pronto: Bre-B (COP), Pix y SPEI con TuCOP Ramp. Mientras tanto puedes
+            Los pagos por Bre-B (COP), Pix y SPEI aún no están disponibles. Mientras tanto puedes
             enviar USDC a otra cuenta Stellar.
           </p>
         </div>

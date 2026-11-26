@@ -10,9 +10,9 @@ export const ONBOARDING_STORAGE_KEY = "cop_by_onboarding_seen";
 export const OPEN_ONBOARDING_EVENT = "cop_by:open-onboarding";
 
 const bullets = [
-  "Entras con Google o email y obtienes una cuenta Stellar (G…).",
-  "Ves tu USDC sin necesidad de XLM (Cavos patrocina la red).",
-  "Luego envias USDC o lo gastas a Bre-B, Pix o SPEI.",
+  "Entra con Google, Apple o correo y obtén tu cuenta Stellar.",
+  "Recibe y envía USDC. Cavos cubre el costo de red en los envíos directos.",
+  "Consulta tus movimientos y comparte comprobantes. Los pagos a pesos estarán disponibles próximamente.",
 ];
 
 export function hasSeenOnboarding() {
@@ -44,7 +44,7 @@ export function OnboardingScreen({ onStart }: { onStart: () => void }) {
           className="h-12 w-12 rounded-[8px]"
         />
         <h1 id={titleId} className="mt-5 text-2xl font-bold leading-tight text-[#17211B]">
-          USDC en Stellar, listo para pesos
+          Tu USDC en Stellar
         </h1>
         <p className="mt-2 text-sm leading-5 text-[#66736B]">
           Non-custodial Wallet
