@@ -12,7 +12,8 @@
     "cf:preview": "opennextjs-cloudflare preview",
     "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "test:stellar": "node scripts/test-stellar.mjs",
-    "test:receipt-export": "node scripts/test-receipt-export.mjs"
+    "test:receipt-export": "node scripts/test-receipt-export.mjs",
+    "test:wallet-state": "node scripts/test-wallet-state.mjs"
   },
   "dependencies": {
     "@cavos/kit": "^0.6.1",

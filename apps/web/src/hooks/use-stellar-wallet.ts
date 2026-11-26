@@ -29,19 +29,14 @@ function isRecoveryReloginError(message: string) {
 
 function humanizeWalletError(message: string) {
   if (isRecoveryReloginError(message)) return RECOVERY_RELOGIN_HINT;
-  if (message.startsWith("kit/")) {
-    return "No se pudo preparar la cuenta. Intenta de nuevo o vuelve a entrar.";
-  }
-  return message;
+  return "No pudimos preparar la cuenta USDC. Reintenta o vuelve a entrar.";
 }
 
 function isBenignTrustlineError(message: string) {
   const lower = message.toLowerCase();
   return (
-    lower.includes("already") ||
-    lower.includes("trustline") && lower.includes("exist") ||
-    lower.includes("op_already_exists") ||
-    lower.includes("change_trust") && lower.includes("low")
+    lower.includes("trustline") && (lower.includes("already") || lower.includes("exist")) ||
+    lower.includes("op_already_exists")
   );
 }
 
@@ -107,7 +102,8 @@ function useStellarWalletState() {
       });
       if (currentAddress.current !== address || request !== balanceRequest.current) return null;
       setBalance({ address, value: bal, error: null });
-      setTrustlineReady(true);
+      // Cavos also returns zero when the account has no trustline.
+      if (Number(bal) > 0) setTrustlineReady(true);
       setBootstrapError(null);
       return bal;
     } catch {
@@ -152,7 +148,7 @@ function useStellarWalletState() {
         if (!isBenignTrustlineError(raw)) {
           // Trustline may already exist from a previous successful relay.
           const bal = await refreshUsdcBalance();
-          if (bal !== null) {
+          if (bal !== null && Number(bal) > 0) {
             setTrustlineReady(true);
             setBootstrapError(null);
             setNeedsRelogin(false);

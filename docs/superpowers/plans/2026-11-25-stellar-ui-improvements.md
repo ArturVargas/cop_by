@@ -54,3 +54,5 @@ Final regression found and fixed: a delayed balance query could overwrite a newe
 Final review: fee display now derives from the verified quote payload instead of duplicate response metadata. Regression with mismatching metadata failed before the change; all 14 tests and type-check pass.
 
 Final polish verified: responsive captures at 320/390/568/768/1280px, no horizontal overflow or runtime exceptions; touch/keyboard/access/send/export checks pass. Text sizes normalized, exact balance formatting reused, metadata reflects available functions. Detector has no primary findings; three font advisories belong to the dormant Celo connect-button and are outside this Stellar pass. Production deployment and independent review remain pending.
+
+Independent review found an Activity-first zero-balance trustline regression. Fixed readiness to require positive balance or successful setup; zero alone no longer proves it, and low-reserve failures stay failures. Added permanent test:wallet-state covering shared consumers, offline/retry, request ordering, account switches, zero balance and setup outcomes; it and all 14 Stellar tests pass.
