@@ -25,7 +25,7 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className={inter.className}>
-        <div className="relative flex min-h-screen flex-col bg-[#F7F8F5]">
+        <div className="relative flex min-h-screen flex-col bg-wallet-surface">
           <AppCavosProvider>
             <Navbar />
             <main className="flex-1">{children}</main>

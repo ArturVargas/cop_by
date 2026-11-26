@@ -57,7 +57,7 @@ export function StellarReceipt({ data, onDone, doneLabel }: {
         <ShareableReceipt data={data} />
       </div>
       <div className="flex flex-col gap-2">
-        <Button type="button" className="h-11 w-full bg-[#6D45B8] text-white hover:bg-[#56359A]" disabled={!image || sharing} onClick={() => void share()}>
+        <Button type="button" className="h-11 w-full bg-wallet-purple text-wallet-on-brand hover:bg-wallet-purple-hover" disabled={!image || sharing} onClick={() => void share()}>
           <Share2 className="mr-2 h-4 w-4" aria-hidden="true" />
           {preparing ? "Preparando comprobante…" : sharing ? "Compartiendo…" : "Compartir comprobante"}
         </Button>
@@ -68,10 +68,10 @@ export function StellarReceipt({ data, onDone, doneLabel }: {
         }}>
           <Download className="mr-2 h-4 w-4" aria-hidden="true" /> Descargar imagen
         </Button>
-        {exportError && <p className="text-sm text-[#9B1C1C]" role="alert">No se pudo preparar la imagen. <button type="button" className="min-h-11 font-semibold underline" onClick={() => setRetry((value) => value + 1)}>Reintentar</button></p>}
-        <p className="text-sm text-[#66736B]" role="status" aria-live="polite">{feedback}</p>
+        {exportError && <p className="text-sm text-wallet-negative" role="alert">No se pudo preparar la imagen. <button type="button" className="min-h-11 font-semibold underline" onClick={() => setRetry((value) => value + 1)}>Reintentar</button></p>}
+        <p className="text-sm text-wallet-muted" role="status" aria-live="polite">{feedback}</p>
       </div>
-      <a href={stellarTransactionUrl(data.txHash)} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center text-sm font-semibold text-[#0E7C4F] underline">Ver en Stellar Expert</a>
+      <a href={stellarTransactionUrl(data.txHash)} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center text-sm font-semibold text-wallet-brand underline">Ver en Stellar Expert</a>
       <Button type="button" variant="outline" className="h-11 w-full" onClick={onDone}>{doneLabel}</Button>
     </div>
   );

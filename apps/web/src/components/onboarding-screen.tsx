@@ -36,23 +36,23 @@ export function OnboardingScreen({ onStart }: { onStart: () => void }) {
   }, []);
 
   return (
-    <dialog ref={dialogRef} aria-labelledby={titleId} onClose={() => { if (!dialogRef.current?.open) onStart(); }} className="onboarding-dialog m-0 h-[100dvh] max-h-none w-full max-w-none overflow-y-auto border-0 bg-[#F7F8F5] p-4">
-      <div className="mx-auto my-auto shrink-0 w-full max-w-md rounded-[8px] border border-[#DDE4DC] bg-white p-6 shadow-sm">
+    <dialog ref={dialogRef} aria-labelledby={titleId} onClose={() => { if (!dialogRef.current?.open) onStart(); }} className="onboarding-dialog m-0 h-[100dvh] max-h-none w-full max-w-none overflow-y-auto border-0 bg-wallet-surface p-4">
+      <div className="mx-auto my-auto shrink-0 w-full max-w-md rounded-[8px] border border-wallet-border bg-wallet-card p-6 shadow-sm">
         <img
           src={COPM_ICON_URL}
           alt="COP By"
           className="h-12 w-12 rounded-[8px]"
         />
-        <h1 id={titleId} className="mt-5 text-2xl font-bold leading-tight text-[#17211B]">
+        <h1 id={titleId} className="mt-5 text-2xl font-bold leading-tight text-wallet-ink">
           Tu USDC en Stellar
         </h1>
-        <p className="mt-2 text-sm leading-5 text-[#66736B]">
+        <p className="mt-2 text-sm leading-5 text-wallet-muted">
           Non-custodial Wallet
         </p>
         <ul className="mt-6 space-y-3">
           {bullets.map((bullet) => (
-            <li key={bullet} className="flex items-start gap-3 text-sm text-[#17211B]">
-              <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[#E6F4EE] text-[#0E7C4F]">
+            <li key={bullet} className="flex items-start gap-3 text-sm text-wallet-ink">
+              <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-wallet-positive-soft text-wallet-brand">
                 <Check className="h-3 w-3" />
               </span>
               {bullet}
@@ -60,7 +60,7 @@ export function OnboardingScreen({ onStart }: { onStart: () => void }) {
           ))}
         </ul>
         <Button
-          className="mt-6 h-12 w-full rounded-[8px] bg-[#6D45B8] text-base font-semibold text-white hover:bg-[#56359A]"
+          className="mt-6 h-12 w-full rounded-[8px] bg-wallet-purple text-base font-semibold text-wallet-on-brand hover:bg-wallet-purple-hover"
           autoFocus
           onClick={() => dialogRef.current?.close()}
         >

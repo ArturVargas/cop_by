@@ -51,7 +51,7 @@ export function CavosAccountControls() {
 
   if (!configured) {
     return (
-      <span className="inline-flex h-11 items-center rounded-full border border-[#F2C94C] bg-[#FFF6D8] px-3 text-[11px] font-semibold text-[#17211B]">
+      <span className="inline-flex h-11 items-center rounded-full border border-wallet-warning bg-wallet-warning-soft px-3 text-[11px] font-semibold text-wallet-ink">
         Configura Cavos
       </span>
     );
@@ -59,7 +59,7 @@ export function CavosAccountControls() {
 
   if (status === "loading") {
     return (
-      <span className="inline-flex h-11 items-center rounded-full border border-[#DDE4DC] bg-white px-3 text-[11px] font-semibold text-[#66736B]">
+      <span className="inline-flex h-11 items-center rounded-full border border-wallet-border bg-wallet-card px-3 text-[11px] font-semibold text-wallet-muted">
         Cargando
       </span>
     );
@@ -75,7 +75,7 @@ export function CavosAccountControls() {
               console.error("cavos login google", err);
             });
           }}
-          className="inline-flex h-11 items-center gap-1.5 rounded-full border border-[#DDE4DC] bg-white px-3 text-xs font-semibold text-[#17211B]"
+          className="inline-flex h-11 items-center gap-1.5 rounded-full border border-wallet-border bg-wallet-card px-3 text-xs font-semibold text-wallet-ink"
         >
           <Wallet className="h-3.5 w-3.5" />
           Google
@@ -83,7 +83,7 @@ export function CavosAccountControls() {
         <button
           type="button"
           onClick={openModal}
-          className="inline-flex h-11 items-center rounded-full border border-[#DDE4DC] bg-[#17211B] px-3 text-xs font-semibold text-white"
+          className="inline-flex h-11 items-center rounded-full border border-wallet-border bg-wallet-ink px-3 text-xs font-semibold text-wallet-on-brand"
         >
           Entrar
         </button>
@@ -93,7 +93,7 @@ export function CavosAccountControls() {
 
   return (
     <div ref={accountRef} className="relative flex items-center gap-1.5" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMenuOpen(false); }}>
-      <span className="inline-flex h-11 max-w-[140px] items-center truncate rounded-full border border-[#D5EADF] bg-[#E6F4EE] px-2.5 text-[11px] font-semibold text-[#0E7C4F]">
+      <span className="inline-flex h-11 max-w-[140px] items-center truncate rounded-full border border-wallet-positive-border bg-wallet-positive-soft px-2.5 text-[11px] font-semibold text-wallet-brand">
         {balanceError ? "Saldo sin actualizar" : `${formatUsdc(usdcBalance)} USDC`}
       </span>
       <button
@@ -103,19 +103,19 @@ export function CavosAccountControls() {
         aria-controls={menuId}
         aria-label="Cuenta"
         onClick={() => setMenuOpen((open) => !open)}
-        className="inline-flex h-11 items-center rounded-full border border-[#DDE4DC] bg-white px-3 text-xs font-semibold text-[#17211B]"
+        className="inline-flex h-11 items-center rounded-full border border-wallet-border bg-wallet-card px-3 text-xs font-semibold text-wallet-ink"
       >
         Cuenta
       </button>
       {menuOpen && (
-        <div id={menuId} className="absolute right-0 top-11 z-50 w-44 rounded-[8px] border border-[#DDE4DC] bg-white p-1 shadow-sm">
+        <div id={menuId} className="absolute right-0 top-11 z-50 w-44 rounded-[8px] border border-wallet-border bg-wallet-card p-1 shadow-sm">
           <button
             type="button"
             onClick={() => {
               logout();
               setMenuOpen(false);
             }}
-            className="flex min-h-11 w-full items-center gap-2 rounded-[6px] px-3 py-2 text-left text-xs font-semibold text-[#17211B] hover:bg-[#F7F8F5]"
+            className="flex min-h-11 w-full items-center gap-2 rounded-[6px] px-3 py-2 text-left text-xs font-semibold text-wallet-ink hover:bg-wallet-surface"
           >
             <LogOut className="h-3.5 w-3.5" />
             Cerrar sesión

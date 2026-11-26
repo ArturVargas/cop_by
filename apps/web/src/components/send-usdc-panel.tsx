@@ -202,19 +202,19 @@ export function SendUsdcPanel() {
 
   if (status !== "ready") {
     return (
-      <p className="text-sm text-[#66736B]" role="status">
+      <p className="text-sm text-wallet-muted" role="status">
         Entra y prepara tu cuenta para enviar USDC.
       </p>
     );
   }
 
   if (balanceError || usdcBalance === null) {
-    return <div className="space-y-3"><p className="text-sm text-[#66736B]" role="status">{balanceError ?? "Consultando tu saldo…"}</p>{balanceError && <Button type="button" variant="outline" onClick={() => void refreshUsdcBalance()}>Reintentar consulta</Button>}</div>;
+    return <div className="space-y-3"><p className="text-sm text-wallet-muted" role="status">{balanceError ?? "Consultando tu saldo…"}</p>{balanceError && <Button type="button" variant="outline" onClick={() => void refreshUsdcBalance()}>Reintentar consulta</Button>}</div>;
   }
 
   if (!trustlineReady) {
     return (
-      <p className="text-sm text-[#66736B]" role="status">
+      <p className="text-sm text-wallet-muted" role="status">
         Preparando cuenta USDC…
       </p>
     );
@@ -242,46 +242,46 @@ export function SendUsdcPanel() {
   if ((step === "confirm" || step === "sending") && plan) {
     return (
       <div className="flex flex-col gap-4" aria-busy={step === "sending"}>
-        <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
-          <p className="text-xs font-semibold text-[#66736B]">Revisa tu envío</p>
-          <p className="mt-2 text-2xl font-bold text-[#17211B]">
-            {formatUsdcAmount(plan.amount)} <span className="text-base text-[#66736B]">USDC</span>
+        <div className="rounded-[8px] border border-wallet-border bg-wallet-card p-4">
+          <p className="text-xs font-semibold text-wallet-muted">Revisa tu envío</p>
+          <p className="mt-2 text-2xl font-bold text-wallet-ink">
+            {formatUsdcAmount(plan.amount)} <span className="text-base text-wallet-muted">USDC</span>
           </p>
-          <p className="mt-3 text-xs font-semibold text-[#66736B]">A</p>
+          <p className="mt-3 text-xs font-semibold text-wallet-muted">A</p>
           <p
-            className="mt-1 break-all font-mono text-xs text-[#17211B]"
+            className="mt-1 break-all font-mono text-xs text-wallet-ink"
             title={normalizedDest}
           >
             {normalizedDest}
           </p>
           {alias ? (
-            <p className="mt-2 text-sm text-[#66736B]">Alias: {alias}</p>
+            <p className="mt-2 text-sm text-wallet-muted">Alias: {alias}</p>
           ) : null}
           {normalizedMemo ? (
             <>
-              <p className="mt-3 text-xs font-semibold text-[#66736B]">Memo</p>
-              <p className="mt-1 break-all font-mono text-xs text-[#17211B]">
+              <p className="mt-3 text-xs font-semibold text-wallet-muted">Memo</p>
+              <p className="mt-1 break-all font-mono text-xs text-wallet-ink">
                 {normalizedMemo}
               </p>
             </>
           ) : null}
-          <dl className="mt-4 space-y-2 text-sm text-[#17211B]">
+          <dl className="mt-4 space-y-2 text-sm text-wallet-ink">
             <div className="flex flex-wrap justify-between gap-3"><dt>Costo adicional máximo</dt><dd>{formatUsdcAmount(plan.maxFee)} USDC</dd></div>
             <div className="flex flex-wrap justify-between gap-3 font-semibold"><dt>Total máximo a descontar</dt><dd>{formatUsdcAmount(plan.maxTotal)} USDC</dd></div>
           </dl>
-          <p className="mt-3 text-sm text-[#66736B]">
+          <p className="mt-3 text-sm text-wallet-muted">
             {plan.delivery === "claimable"
               ? "El destinatario aún no puede recibir USDC. Los fondos quedarán reservados: deberá reclamarlos y podría tener costos de activación. Esto todavía no es un depósito en su saldo."
               : "El destinatario recibirá USDC en su cuenta. Cavos cubre el costo de red."}
           </p>
         </div>
         {step === "sending" ? (
-          <p className="text-sm text-[#66736B]" role="status">
+          <p className="text-sm text-wallet-muted" role="status">
             Enviando USDC…
           </p>
         ) : null}
         <Button
-          className="h-11 w-full rounded-[8px] bg-[#0E7C4F] text-sm font-semibold text-white hover:bg-[#0A5F3C] disabled:opacity-60"
+          className="h-11 w-full rounded-[8px] bg-wallet-brand text-sm font-semibold text-wallet-on-brand hover:bg-wallet-brand-hover disabled:opacity-60"
           disabled={step === "sending"}
           onClick={() => void onConfirmSend()}
         >
@@ -303,7 +303,7 @@ export function SendUsdcPanel() {
     <form className="flex flex-col gap-4" onSubmit={(event) => void onFormSubmit(event)} noValidate aria-busy={step === "preparing"}>
       <fieldset disabled={step === "preparing"} className="flex min-w-0 flex-col gap-4">
       <div>
-        <label htmlFor={amountId} className="text-xs font-semibold text-[#66736B]">
+        <label htmlFor={amountId} className="text-xs font-semibold text-wallet-muted">
           Monto USDC <span aria-hidden="true">*</span>
         </label>
         <input
@@ -321,11 +321,11 @@ export function SendUsdcPanel() {
           }}
           onBlur={() => setAmountTouched(true)}
           placeholder="0.00"
-          className="mt-1 h-12 w-full rounded-[8px] border border-[#DDE4DC] bg-white px-3 text-base text-[#17211B] outline-none focus:border-[#0E7C4F] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F] aria-[invalid=true]:border-[#9B1C1C]"
+          className="mt-1 h-12 w-full rounded-[8px] border border-wallet-border bg-wallet-card px-3 text-base text-wallet-ink outline-none focus:border-wallet-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wallet-brand aria-[invalid=true]:border-wallet-negative"
         />
         <button
           type="button"
-          className="mt-1 min-h-11 text-sm font-semibold text-[#0E7C4F]"
+          className="mt-1 min-h-11 text-sm font-semibold text-wallet-brand"
           onClick={() => {
             if (usdcBalance && Number(usdcBalance) > 0) {
               setAmount(usdcBalance);
@@ -336,14 +336,14 @@ export function SendUsdcPanel() {
           Usar todo ({usdcBalance ?? "0"} USDC)
         </button>
         {showAmountError ? (
-          <p id={amountErrorId} className="mt-1 text-xs text-[#9B1C1C]" role="alert">
+          <p id={amountErrorId} className="mt-1 text-xs text-wallet-negative" role="alert">
             {amountError}
           </p>
         ) : null}
       </div>
 
       <div>
-        <label htmlFor={destId} className="text-xs font-semibold text-[#66736B]">
+        <label htmlFor={destId} className="text-xs font-semibold text-wallet-muted">
           Cuenta Stellar del destinatario <span aria-hidden="true">*</span>
         </label>
         <input
@@ -362,17 +362,17 @@ export function SendUsdcPanel() {
           }}
           onBlur={() => setDestTouched(true)}
           placeholder="G…"
-          className="mt-1 h-12 w-full rounded-[8px] border border-[#DDE4DC] bg-white px-3 font-mono text-base text-[#17211B] outline-none focus:border-[#0E7C4F] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F] aria-[invalid=true]:border-[#9B1C1C]"
+          className="mt-1 h-12 w-full rounded-[8px] border border-wallet-border bg-wallet-card px-3 font-mono text-base text-wallet-ink outline-none focus:border-wallet-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wallet-brand aria-[invalid=true]:border-wallet-negative"
         />
         {showDestError ? (
-          <p id={destErrorId} className="mt-1 text-xs text-[#9B1C1C]" role="alert">
+          <p id={destErrorId} className="mt-1 text-xs text-wallet-negative" role="alert">
             {destError}
           </p>
         ) : null}
       </div>
 
       <div>
-        <label htmlFor={aliasId} className="text-xs font-semibold text-[#66736B]">
+        <label htmlFor={aliasId} className="text-xs font-semibold text-wallet-muted">
           Alias (opcional)
         </label>
         <input
@@ -382,12 +382,12 @@ export function SendUsdcPanel() {
           onChange={(e) => setAlias(e.target.value.slice(0, 24))}
           placeholder="Mamá, Juan…"
           enterKeyHint="next"
-          className="mt-1 h-11 w-full rounded-[8px] border border-[#DDE4DC] bg-white px-3 text-base text-[#17211B] outline-none focus:border-[#0E7C4F] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F]"
+          className="mt-1 h-11 w-full rounded-[8px] border border-wallet-border bg-wallet-card px-3 text-base text-wallet-ink outline-none focus:border-wallet-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wallet-brand"
         />
       </div>
 
       <div>
-        <label htmlFor={memoId} className="text-xs font-semibold text-[#66736B]">
+        <label htmlFor={memoId} className="text-xs font-semibold text-wallet-muted">
           Memo (opcional)
         </label>
         <input
@@ -406,21 +406,21 @@ export function SendUsdcPanel() {
           }}
           onBlur={() => setMemoTouched(true)}
           placeholder="Referencia del destinatario"
-          className="mt-1 h-11 w-full rounded-[8px] border border-[#DDE4DC] bg-white px-3 font-mono text-base text-[#17211B] outline-none focus:border-[#0E7C4F] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F] aria-[invalid=true]:border-[#9B1C1C]"
+          className="mt-1 h-11 w-full rounded-[8px] border border-wallet-border bg-wallet-card px-3 font-mono text-base text-wallet-ink outline-none focus:border-wallet-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wallet-brand aria-[invalid=true]:border-wallet-negative"
         />
-        <p id={memoHintId} className="mt-1 text-[11px] text-[#66736B]">
+        <p id={memoHintId} className="mt-1 text-[11px] text-wallet-muted">
           Añádelo solo si el destinatario te lo pide. Hasta {MEMO_TEXT_MAX_BYTES} caracteres simples; algunos símbolos ocupan más espacio. El destinatario debe tener USDC habilitado.
         </p>
         {showMemoError ? (
-          <p id={memoErrorId} className="mt-1 text-xs text-[#9B1C1C]" role="alert">
+          <p id={memoErrorId} className="mt-1 text-xs text-wallet-negative" role="alert">
             {memoError}
           </p>
         ) : null}
       </div>
 
       {recipients.length > 0 && (
-        <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-3">
-          <p className="text-xs font-semibold text-[#66736B]">Guardados</p>
+        <div className="rounded-[8px] border border-wallet-border bg-wallet-card p-3">
+          <p className="text-xs font-semibold text-wallet-muted">Guardados</p>
           <ul className="mt-2 space-y-2">
             {recipients.map((item) => (
               <li key={item.address} className="flex items-start gap-2">
@@ -429,11 +429,11 @@ export function SendUsdcPanel() {
                   onClick={() => onPickRecipient(item)}
                   className="min-h-11 min-w-0 flex-1 text-left"
                 >
-                  <p className="text-sm font-semibold text-[#17211B]">
+                  <p className="text-sm font-semibold text-wallet-ink">
                     {item.alias || "Sin alias"}
                   </p>
                   <p
-                    className="font-mono text-[10px] text-[#66736B]"
+                    className="font-mono text-[10px] text-wallet-muted"
                     title={item.address}
                   >
                     {formatShortStellarGAddress(item.address)}
@@ -441,7 +441,7 @@ export function SendUsdcPanel() {
                 </button>
                 <button
                   type="button"
-                  className="min-h-11 min-w-11 shrink-0 px-2 text-[11px] font-semibold text-[#9B1C1C]"
+                  className="min-h-11 min-w-11 shrink-0 px-2 text-[11px] font-semibold text-wallet-negative"
                   onClick={() => {
                     removeSavedRecipient(item.address);
                     setRecipients(getSavedRecipients());
@@ -458,7 +458,7 @@ export function SendUsdcPanel() {
       {(step === "error" || error) && (
         <p
           id={formErrorId}
-          className="rounded-[8px] border border-[#F5C6CB] bg-[#FDECEE] px-3 py-2 text-xs text-[#9B1C1C]"
+          className="rounded-[8px] border border-wallet-negative-border bg-wallet-negative-soft px-3 py-2 text-xs text-wallet-negative"
           role="alert"
         >
           {error}
@@ -467,7 +467,7 @@ export function SendUsdcPanel() {
 
       <Button
         type="submit"
-        className="h-12 w-full rounded-[8px] bg-[#0E7C4F] text-base font-semibold text-white hover:bg-[#0A5F3C]"
+        className="h-12 w-full rounded-[8px] bg-wallet-brand text-base font-semibold text-wallet-on-brand hover:bg-wallet-brand-hover"
       >
         Continuar
       </Button>

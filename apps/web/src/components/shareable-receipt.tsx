@@ -53,78 +53,78 @@ export function ShareableReceipt({ data }: { data: ShareableReceiptData | Stella
 
   return (
     <div
-      className="w-full max-w-[360px] overflow-hidden rounded-[12px] border border-[#DDE4DC] bg-white"
+      className="w-full max-w-[360px] overflow-hidden rounded-[12px] border border-wallet-border bg-wallet-card"
       style={{ fontFamily: "system-ui, sans-serif" }}
     >
-      <div className="bg-[#6D45B8] px-6 py-5 text-white">
+      <div className="bg-wallet-purple px-6 py-5 text-wallet-on-brand">
         <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-[8px] bg-white text-xs font-bold text-[#6D45B8]">
+          <div className="grid h-10 w-10 place-items-center rounded-[8px] bg-wallet-card text-xs font-bold text-wallet-purple">
             COP
           </div>
           <div>
             <p className="text-lg font-bold leading-none">COP By</p>
-            <p className="mt-1 text-xs text-white/80">Comprobante de operación</p>
+            <p className="mt-1 text-xs text-wallet-on-brand/80">Comprobante de operación</p>
           </div>
         </div>
       </div>
 
       <div className="px-6 py-5">
-        <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#E6F4EE] text-[#0E7C4F]">
+        <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-full bg-wallet-positive-soft text-wallet-brand">
           <span className="text-lg font-bold">✓</span>
         </div>
-        <h2 className="text-xl font-bold text-[#17211B]">{title}</h2>
-        <p className="mt-1 text-sm text-[#66736B]">{amountLabel}</p>
-        <p className="mt-3 break-words text-4xl font-bold leading-none text-[#0E7C4F]">
+        <h2 className="text-xl font-bold text-wallet-ink">{title}</h2>
+        <p className="mt-1 text-sm text-wallet-muted">{amountLabel}</p>
+        <p className="mt-3 break-words text-4xl font-bold leading-none text-wallet-brand">
           {amount} <span className="text-lg font-semibold">{stellar ? "USDC" : "pesos"}</span>
         </p>
-        <p className="mt-2 text-xs text-[#66736B]">
+        <p className="mt-2 text-xs text-wallet-muted">
           {stellar ? `Stellar ${data.network === "testnet" ? "Testnet · Fondos de prueba" : "Mainnet"}` : "Equivalente en COPm onchain"}
         </p>
-        {stellar && data.delivery === "claimable" && <p className="mt-3 text-sm text-[#66736B]">La operación reservó estos fondos para su reclamación. Consulta su estado actual en Stellar Expert.</p>}
+        {stellar && data.delivery === "claimable" && <p className="mt-3 text-sm text-wallet-muted">La operación reservó estos fondos para su reclamación. Consulta su estado actual en Stellar Expert.</p>}
 
-        <div className="mt-5 space-y-3 rounded-[8px] bg-[#F7F8F5] p-4 text-sm">
+        <div className="mt-5 space-y-3 rounded-[8px] bg-wallet-surface p-4 text-sm">
           {stellar && (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#66736B]">De</p>
-              <p className="mt-1 break-all font-mono text-xs text-[#17211B]">{data.senderAddress}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-wallet-muted">De</p>
+              <p className="mt-1 break-all font-mono text-xs text-wallet-ink">{data.senderAddress}</p>
             </div>
           )}
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#66736B]">
+            <p className="text-xs font-semibold uppercase tracking-wide text-wallet-muted">
               {stellar || data.variant === "transfer" ? "Destinatario" : "Destino"}
             </p>
-            {stellar && data.recipientAlias && <p className="mt-1 break-words font-semibold text-[#17211B]">{data.recipientAlias}</p>}
-            <p className={stellar ? "mt-1 break-all font-mono text-xs text-[#17211B]" : "mt-1 font-semibold text-[#17211B]"}>{destination}</p>
+            {stellar && data.recipientAlias && <p className="mt-1 break-words font-semibold text-wallet-ink">{data.recipientAlias}</p>}
+            <p className={stellar ? "mt-1 break-all font-mono text-xs text-wallet-ink" : "mt-1 font-semibold text-wallet-ink"}>{destination}</p>
           </div>
           {formattedDate && (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#66736B]">
+              <p className="text-xs font-semibold uppercase tracking-wide text-wallet-muted">
                 Fecha
               </p>
-              <p className="mt-1 font-semibold text-[#17211B]">{formattedDate}</p>
+              <p className="mt-1 font-semibold text-wallet-ink">{formattedDate}</p>
             </div>
           )}
           {data.variant === "swap" && data.copmBalance && data.copmBalance !== "No disponible" && (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#66736B]">
+              <p className="text-xs font-semibold uppercase tracking-wide text-wallet-muted">
                 Balance final
               </p>
-              <p className="mt-1 font-semibold text-[#17211B]">
+              <p className="mt-1 font-semibold text-wallet-ink">
                 {formatPesoAmountFromString(data.copmBalance)} pesos
               </p>
             </div>
           )}
           {stellar && data.memo && (
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#66736B]">Memo</p>
-              <p className="mt-1 break-words text-sm text-[#17211B]">{data.memo}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-wallet-muted">Memo</p>
+              <p className="mt-1 break-words text-sm text-wallet-ink">{data.memo}</p>
             </div>
           )}
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#66736B]">
+            <p className="text-xs font-semibold uppercase tracking-wide text-wallet-muted">
               Transacción
             </p>
-            <p className="mt-1 break-all font-mono text-xs font-semibold text-[#0E7C4F]">
+            <p className="mt-1 break-all font-mono text-xs font-semibold text-wallet-brand">
               {stellar ? data.txHash : formatAddressPreview(data.txHash)}
             </p>
           </div>

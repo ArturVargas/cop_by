@@ -18,7 +18,7 @@ Preserve Spanish UI, "Non-custodial Wallet", Stellar Testnet and full receipt ve
 - [x] 5. Keyboard: tabs Home/End focus; account disclosure state, Escape/outside dismissal. Browser assertions.
 - [x] 6. Touch targets: minimum 44px for relevant Stellar actions and legible inputs. Browser measurements at 320px.
 - [x] 7. Activity recovery: distinct loading/device/login/deployment/error actions. Render/check each state; preserve history and receipt navigation.
-- [ ] 8. Tokens: centralize current Stellar palette and apply it across the audited components, preserve exported-image colors. Detector plus screenshot comparison.
+- [x] 8. Tokens: centralize current Stellar palette and apply it across the audited components, preserve exported-image colors. Detector plus screenshot comparison.
 - [ ] 9. Loading: isolate send/receipt heavy modules from initial home route; compare production JS chunks, confirm history and receipt export still work.
 - [ ] Final polish and regression: unit tests, type-check, build, mobile/desktop/landscape, shared wallet errors and PNG export. Review entire diff, push commits, deploy Worker, verify live app/API.
 
@@ -42,3 +42,5 @@ Task 5 verified: keyboard regression failed before implementation and now passes
 Task 6 verified: visible action targets are >=44x44 at 320px on Home, Activity and receipt; no horizontal overflow; type-check passed.
 
 Task 7 verified: seven Activity access states show the appropriate explanation/action and keep history hidden; type-check passed.
+
+Task 8 verified: 14 tests, type-check, share/download PNG at both widths; exported image visually retains full content and palette. Detector: no primary findings, 16 small-font advisories reserved for final polish.

@@ -4,6 +4,23 @@
 
 @layer base {
   :root {
+    --wallet-brand: 14 124 79;
+    --wallet-brand-hover: 10 95 60;
+    --wallet-ink: 23 33 27;
+    --wallet-muted: 102 115 107;
+    --wallet-purple: 109 69 184;
+    --wallet-purple-hover: 86 53 154;
+    --wallet-border: 221 228 220;
+    --wallet-surface: 247 248 245;
+    --wallet-card: 255 255 255;
+    --wallet-on-brand: 255 255 255;
+    --wallet-positive-soft: 230 244 238;
+    --wallet-positive-border: 213 234 223;
+    --wallet-negative: 155 28 28;
+    --wallet-negative-soft: 253 236 238;
+    --wallet-negative-border: 245 198 203;
+    --wallet-warning: 242 201 76;
+    --wallet-warning-soft: 255 246 216;
     --border: 214.3 31.8% 91.4%;
     --input: 216 33% 97%;
     --ring: 215 20.2% 65.1%;
@@ -83,3 +100,10 @@
 .onboarding-dialog[open] { display: flex; flex-direction: column; }
 dialog:modal { overscroll-behavior: contain; }
 dialog::backdrop { overflow: hidden; overscroll-behavior: contain; }
+
+@layer base {
+  body { color-scheme: light; }
+  ::selection { background: rgb(var(--wallet-positive-soft)); color: rgb(var(--wallet-ink)); }
+  input { caret-color: rgb(var(--wallet-brand)); }
+  input::placeholder { color: rgb(var(--wallet-muted)); opacity: 1; }
+}

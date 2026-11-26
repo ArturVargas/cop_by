@@ -46,7 +46,7 @@ export function HomeTabs({
       ref={listRef}
       role="tablist"
       aria-label="Acciones"
-      className="grid grid-cols-3 gap-1 rounded-[8px] border border-[#DDE4DC] bg-white p-1"
+      className="grid grid-cols-3 gap-1 rounded-[8px] border border-wallet-border bg-wallet-card p-1"
       onKeyDown={(event) => {
         if (event.key === "ArrowRight") {
           event.preventDefault();
@@ -77,8 +77,8 @@ export function HomeTabs({
             onClick={() => onChange(tab.id)}
             className={
               selected
-                ? "h-11 min-h-11 rounded-[6px] bg-[#0E7C4F] text-sm font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F]"
-                : "h-11 min-h-11 rounded-[6px] text-sm font-semibold text-[#66736B] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F]"
+                ? "h-11 min-h-11 rounded-[6px] bg-wallet-brand text-sm font-semibold text-wallet-on-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wallet-brand"
+                : "h-11 min-h-11 rounded-[6px] text-sm font-semibold text-wallet-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wallet-brand"
             }
           >
             {tab.label}
