@@ -1,5 +1,7 @@
 "use client";
 
+import { StellarWalletProvider } from "@/hooks/use-stellar-wallet";
+
 import { CavosProvider } from "@cavos/kit/react";
 
 import {
@@ -38,7 +40,7 @@ export function AppCavosProvider({ children }: { children: React.ReactNode }) {
         providers: ["google", "apple", "email"],
       }}
     >
-      {children}
+      <StellarWalletProvider>{children}</StellarWalletProvider>
     </CavosProvider>
   );
 }

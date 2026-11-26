@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createContext, createElement, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useCavos } from "@cavos/kit/react";
 
 import { getStellarUsdc, isCavosConfigured } from "@/lib/cavos-config";
@@ -45,7 +45,7 @@ function isBenignTrustlineError(message: string) {
   );
 }
 
-export function useStellarWallet() {
+function useStellarWalletState() {
   const configured = isCavosConfigured();
   const {
     wallet: rawWallet,
@@ -63,7 +63,11 @@ export function useStellarWallet() {
   const wallet = rawWallet?.chain === "stellar" ? rawWallet : null;
   const address = wallet?.address ?? null;
 
-  const [usdcBalance, setUsdcBalance] = useState<string | null>(null);
+  const [balance, setBalance] = useState<{ address: string | null; value: string | null; error: string | null }>({ address: null, value: null, error: null });
+  const usdcBalance = balance.address === address ? balance.value : null;
+  const balanceError = balance.address === address ? balance.error : null;
+  const currentAddress = useRef(address);
+  currentAddress.current = address;
   const [bootstrapping, setBootstrapping] = useState(false);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [trustlineReady, setTrustlineReady] = useState(false);
@@ -89,7 +93,7 @@ export function useStellarWallet() {
 
   const refreshUsdcBalance = useCallback(async () => {
     if (!wallet || wallet.status !== "ready") {
-      setUsdcBalance(null);
+      setBalance({ address, value: null, error: null });
       return null;
     }
     try {
@@ -97,16 +101,21 @@ export function useStellarWallet() {
         code: usdc.code,
         issuer: usdc.issuer,
       });
-      setUsdcBalance(bal);
+      if (currentAddress.current !== address) return null;
+      setBalance({ address, value: bal, error: null });
       setTrustlineReady(true);
       setBootstrapError(null);
       return bal;
     } catch {
-      setUsdcBalance("0");
-      setTrustlineReady(false);
-      return "0";
+      if (currentAddress.current !== address) return null;
+      setBalance((previous) => ({
+        address,
+        value: previous.address === address ? previous.value : null,
+        error: "No pudimos consultar tu saldo. Reintenta para actualizarlo.",
+      }));
+      return null;
     }
-  }, [usdc.code, usdc.issuer, wallet]);
+  }, [address, usdc.code, usdc.issuer, wallet]);
 
   const ensureAccountAndTrustline = useCallback(async () => {
     if (!wallet) {
@@ -170,6 +179,13 @@ export function useStellarWallet() {
   }, [refreshUsdcBalance, usdc.code, usdc.issuer, wallet]);
 
   useEffect(() => {
+    setTrustlineReady(false);
+    setNeedsRelogin(false);
+    setBootstrapError(null);
+    bootstrapInFlight.current = false;
+  }, [address]);
+
+  useEffect(() => {
     if (!isAuthenticated) {
       setNeedsRelogin(false);
       setBootstrapError(null);
@@ -181,10 +197,10 @@ export function useStellarWallet() {
     if (status === "ready") {
       void refreshUsdcBalance();
     } else if (status === "signed-out" || status === "loading") {
-      setUsdcBalance(null);
+      setBalance({ address, value: null, error: null });
       setTrustlineReady(false);
     }
-  }, [refreshUsdcBalance, status]);
+  }, [address, refreshUsdcBalance, status]);
 
   useEffect(() => {
     if (trustlineReady) setBootstrapError(null);
@@ -196,6 +212,7 @@ export function useStellarWallet() {
     address,
     usdc,
     usdcBalance,
+    balanceError,
     trustlineReady,
     bootstrapping,
     bootstrapError,
@@ -210,4 +227,17 @@ export function useStellarWallet() {
     refreshUsdcBalance,
     wallet,
   };
+}
+
+const StellarWalletContext = createContext<ReturnType<typeof useStellarWalletState> | null>(null);
+
+export function StellarWalletProvider({ children }: { children: ReactNode }) {
+  const state = useStellarWalletState();
+  return createElement(StellarWalletContext.Provider, { value: state }, children);
+}
+
+export function useStellarWallet() {
+  const state = useContext(StellarWalletContext);
+  if (!state) throw new Error("useStellarWallet requires StellarWalletProvider");
+  return state;
 }

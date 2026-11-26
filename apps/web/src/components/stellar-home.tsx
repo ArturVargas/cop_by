@@ -38,6 +38,7 @@ export function StellarHome() {
     address,
     usdc,
     usdcBalance,
+    balanceError,
     trustlineReady,
     bootstrapping,
     bootstrapError,
@@ -62,10 +63,10 @@ export function StellarHome() {
   }, []);
 
   useEffect(() => {
-    if (status === "undeployed" || (status === "ready" && !trustlineReady)) {
+    if (status === "undeployed" || (status === "ready" && !trustlineReady && !balanceError && !bootstrapError)) {
       void ensureAccountAndTrustline().catch(() => undefined);
     }
-  }, [ensureAccountAndTrustline, status, trustlineReady]);
+  }, [balanceError, bootstrapError, ensureAccountAndTrustline, status, trustlineReady]);
 
   const copyAddress = async () => {
     if (!address) return;
@@ -214,6 +215,7 @@ export function StellarHome() {
             {refreshing ? "Actualizando…" : "Actualizar"}
           </button>
         </div>
+        {balanceError && <p className="mt-3 text-sm text-[#9B1C1C]" role="alert">{balanceError}{usdcBalance !== null ? " Mostramos el último saldo confirmado." : ""}</p>}
         <div className="mt-3 flex items-center justify-between gap-2">
           <p
             className="font-mono text-[11px] leading-4 text-[#66736B]"
@@ -262,7 +264,7 @@ export function StellarHome() {
             <Button
               className="mt-3 h-10 w-full rounded-[8px] bg-[#0E7C4F] text-sm font-semibold text-white hover:bg-[#0A5F3C]"
               disabled={bootstrapping}
-              onClick={() => void ensureAccountAndTrustline()}
+              onClick={() => void ensureAccountAndTrustline().catch(() => undefined)}
             >
               {bootstrapping ? "Preparando…" : "Preparar cuenta"}
             </Button>

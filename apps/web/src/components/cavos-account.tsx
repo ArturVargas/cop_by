@@ -20,6 +20,7 @@ export function CavosAccountControls() {
     configured,
     status,
     usdcBalance,
+    balanceError,
     openModal,
     login,
     logout,
@@ -72,7 +73,7 @@ export function CavosAccountControls() {
   return (
     <div className="relative flex items-center gap-1.5">
       <span className="inline-flex h-9 max-w-[140px] items-center truncate rounded-full border border-[#D5EADF] bg-[#E6F4EE] px-2.5 text-[11px] font-semibold text-[#0E7C4F]">
-        {formatUsdc(usdcBalance)} USDC
+        {balanceError ? "Saldo sin actualizar" : `${formatUsdc(usdcBalance)} USDC`}
       </span>
       <button
         type="button"

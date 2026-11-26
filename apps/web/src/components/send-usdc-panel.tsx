@@ -60,6 +60,7 @@ export function SendUsdcPanel() {
     status,
     address,
     usdcBalance,
+    balanceError,
     trustlineReady,
     wallet,
     refreshUsdcBalance,
@@ -137,6 +138,8 @@ export function SendUsdcPanel() {
   const canSend =
     status === "ready" &&
     trustlineReady &&
+    !balanceError &&
+    usdcBalance !== null &&
     !!wallet &&
     !amountError &&
     !destError &&
@@ -206,6 +209,10 @@ export function SendUsdcPanel() {
         Entra y prepara tu cuenta para enviar USDC.
       </p>
     );
+  }
+
+  if (balanceError || usdcBalance === null) {
+    return <div className="space-y-3"><p className="text-sm text-[#66736B]" role="status">{balanceError ?? "Consultando tu saldo…"}</p>{balanceError && <Button type="button" variant="outline" onClick={() => void refreshUsdcBalance()}>Reintentar consulta</Button>}</div>;
   }
 
   if (!trustlineReady) {
