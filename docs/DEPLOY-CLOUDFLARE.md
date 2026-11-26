@@ -43,8 +43,8 @@ Cloudflare manages its DNS record and TLS certificate. The account must manage
 the `copby.money` zone. Do not create a separate CNAME or change the apex domain.
 
 The existing EVM API routes are retained but no legacy database or signing keys
-are configured for this Stellar deployment. TuCOP and Stellar history remain
-pending. There is no R2 cache requirement for the current frontend.
+are configured for this Stellar deployment. TuCOP remains pending. USDC history, receiving addresses and shareable Stellar
+receipts are available. There is no R2 cache requirement for the current frontend.
 
 ## Verify
 
@@ -58,3 +58,32 @@ pending. There is no R2 cache requirement for the current frontend.
 Wrangler reports the compressed Worker size before deployment. If it exceeds
 the account's plan limit, deployment needs either a smaller bundle or an account
 plan change; do not enable a paid plan automatically.
+
+## UI improvements release — 2026-11-25
+
+Application commit: `9ca3b19` (15 separate implementation commits since `d57402b`).
+Cloudflare Worker version: `3fba35ea-835b-42fd-84a2-af60723c9caf`.
+
+This release shares confirmed wallet balances, preserves them on query errors,
+binds send confirmation to delivery and the verified fee ceiling, distinguishes
+claimable balances, and improves onboarding, keyboard navigation, touch targets
+and Activity recovery. The Usar todo balance label uses two decimals (`15.00`)
+while transfers keep the original ledger precision. The palette is documented
+in DESIGN.md and noncritical send/receipt components load on demand.
+
+Validation completed:
+
+- `pnpm --filter web test:stellar`: 15 passing tests.
+- `pnpm --filter web test:wallet-state`: shared consumers, offline/retry,
+  response ordering, account switches, zero balances and setup outcomes.
+- `pnpm --filter web test:receipt-export`: full PNG bounds at 320px/480px containers.
+- Type-check, OpenNext Cloudflare build and Wrangler dry run passed.
+- Responsive and keyboard browser checks passed; signed-in UI used a simulated wallet.
+- Independent code review found no remaining critical or important issues.
+- Live HTTPS `/`, `/activity` and the Stellar activity API returned 200; the API
+  returned six movements for the public test account during verification.
+- The deployed onboarding and Cavos sign-in modal opened successfully.
+
+No real transfers or authenticated Cavos submissions were performed in this QA.
+The Worker gzip upload was approximately 1.9 MiB. Vendored SDK build warnings
+remain; they did not prevent building, deploying or serving the app.

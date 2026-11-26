@@ -52,7 +52,7 @@ Wallet de operación, en español. Conservar la identidad actual: superficies cl
 Los valores normativos están en el frontmatter. La implementación está en `apps/web/src/app/globals.css` (`--wallet-*`) y Tailwind los expone como `wallet-*`. Verde identifica acciones y resultados; morado identifica compartir y comprobantes. Los errores combinan mensaje y color. Cavos necesita el valor de marca literal en su configuración externa.
 
 ## Typography
-Inter en la app; system-ui en la imagen del comprobante para exportar sin depender de fuentes remotas. Inputs a 16px. Direcciones y hashes en monospace; montos conservan los siete decimales de Stellar.
+Inter en la app; system-ui en la imagen del comprobante para exportar sin depender de fuentes remotas. Inputs a 16px. Direcciones y hashes en monospace; montos conservan los siete decimales de Stellar. El label de Usar todo muestra dos decimales con punto; la operación conserva el valor original.
 
 ## Layout
 Una columna centrada, hasta 448px y 512px desde 640px. Padding de contenido 16px. Comprobante hasta 360px, siempre adaptable al ancho disponible. Onboarding modal con desplazamiento vertical en pantallas bajas.

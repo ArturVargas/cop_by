@@ -20,7 +20,7 @@ Preserve Spanish UI, "Non-custodial Wallet", Stellar Testnet and full receipt ve
 - [x] 7. Activity recovery: distinct loading/device/login/deployment/error actions. Render/check each state; preserve history and receipt navigation.
 - [x] 8. Tokens: centralize current Stellar palette and apply it across the audited components, preserve exported-image colors. Detector plus screenshot comparison.
 - [x] 9. Loading: isolate send/receipt heavy modules from initial home route; compare production JS chunks, confirm history and receipt export still work.
-- [ ] Final polish and regression: unit tests, type-check, build, mobile/desktop/landscape, shared wallet errors and PNG export. Review entire diff, push commits, deploy Worker, verify live app/API.
+- [x] Final polish and regression: unit tests, type-check, build, mobile/desktop/landscape, shared wallet errors and PNG export. Review entire diff, push commits, deploy Worker, verify live app/API.
 
 ## Review focus
 - Query failure must never become a valid zero or permit a stale balance to authorize a send (task 1).
@@ -58,3 +58,5 @@ Final polish verified: responsive captures at 320/390/568/768/1280px, no horizon
 Independent review found an Activity-first zero-balance trustline regression. Fixed readiness to require positive balance or successful setup; zero alone no longer proves it, and low-reserve failures stay failures. Added permanent test:wallet-state covering shared consumers, offline/retry, request ordering, account switches, zero balance and setup outcomes; it and all 14 Stellar tests pass.
 
 User follow-up: show exactly two decimals in the Usar todo USDC balance label (15.0000000 -> 15.00), preserving transfer/input precision. Added exact formatting checks including rounding and large values; all 15 Stellar tests and type-check passed.
+
+Complete: source commits pushed through 9ca3b19; final Cloudflare build and dry run passed, then deployed Worker 3fba35ea-835b-42fd-84a2-af60723c9caf. Public Home/Activity/API returned 200, six movements loaded, and native onboarding + Cavos login modal worked on the deployed domain. No real funds moved.
