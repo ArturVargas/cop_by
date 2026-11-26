@@ -17,7 +17,7 @@ Preserve Spanish UI, "Non-custodial Wallet", Stellar Testnet and full receipt ve
 - [x] 4. Copy: distinguish available/pending spending; explain memo and reserved funds without SDK jargon. Review actual states and labels.
 - [x] 5. Keyboard: tabs Home/End focus; account disclosure state, Escape/outside dismissal. Browser assertions.
 - [x] 6. Touch targets: minimum 44px for relevant Stellar actions and legible inputs. Browser measurements at 320px.
-- [ ] 7. Activity recovery: distinct loading/device/login/deployment/error actions. Render/check each state; preserve history and receipt navigation.
+- [x] 7. Activity recovery: distinct loading/device/login/deployment/error actions. Render/check each state; preserve history and receipt navigation.
 - [ ] 8. Tokens: centralize current Stellar palette and apply it across the audited components, preserve exported-image colors. Detector plus screenshot comparison.
 - [ ] 9. Loading: isolate send/receipt heavy modules from initial home route; compare production JS chunks, confirm history and receipt export still work.
 - [ ] Final polish and regression: unit tests, type-check, build, mobile/desktop/landscape, shared wallet errors and PNG export. Review entire diff, push commits, deploy Worker, verify live app/API.
@@ -40,3 +40,5 @@ Task 4 verified: onboarding matches current availability; memo hint is associate
 Task 5 verified: keyboard regression failed before implementation and now passes Home/End, expanded state, Escape focus return and pointer dismissal. Type-check passed.
 
 Task 6 verified: visible action targets are >=44x44 at 320px on Home, Activity and receipt; no horizontal overflow; type-check passed.
+
+Task 7 verified: seven Activity access states show the appropriate explanation/action and keep history hidden; type-check passed.

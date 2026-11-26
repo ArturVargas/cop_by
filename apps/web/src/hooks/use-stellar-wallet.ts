@@ -89,6 +89,8 @@ function useStellarWalletState() {
     status = "undeployed";
   } else if (wallet.status === "ready") {
     status = "ready";
+  } else {
+    status = "error";
   }
 
   const refreshUsdcBalance = useCallback(async () => {

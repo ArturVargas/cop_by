@@ -14,7 +14,8 @@ import { formatShortStellarGAddress } from "@/lib/stellar-address";
 import { stellarTransactionUrl, type StellarActivityItem, type StellarActivityPage } from "@/lib/stellar-activity";
 
 export default function ActivityPage() {
-  const { address, status, isAuthenticated, openModal } = useStellarWallet();
+  const { address, status, openModal, authError, bootstrapping, bootstrapError, ensureAccountAndTrustline, approveDeviceWithPasskey } = useStellarWallet();
+  const [accessError, setAccessError] = useState<string | null>(null);
   const [history, setHistory] = useState<{ address: string; items: StellarActivityItem[]; nextCursor: string | null } | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [refresh, setRefresh] = useState(0);
@@ -24,9 +25,9 @@ export default function ActivityPage() {
   const items = history?.address === address ? history.items : [];
   const nextCursor = history?.address === address ? history.nextCursor : null;
 
-  useEffect(() => { setCursor(null); setHistory(null); setSelected(null); }, [address]);
+  useEffect(() => { setCursor(null); setHistory(null); setSelected(null); setError(null); setAccessError(null); }, [address]);
 
-  const receipt = useMemo<StellarReceiptData | null>(() => selected ? {
+  const receipt = useMemo<StellarReceiptData | null>(() => selected && history?.address === address ? {
     variant: "stellar-transfer",
     direction: selected.direction,
     delivery: selected.kind === "claimable" ? "claimable" : undefined,
@@ -38,7 +39,7 @@ export default function ActivityPage() {
     txHash: selected.txHash,
     memo: selected.memo,
     network: CAVOS_NETWORK,
-  } : null, [selected]);
+  } : null, [address, history?.address, selected]);
 
   useEffect(() => {
     if (!address || status !== "ready") return;
@@ -80,10 +81,33 @@ export default function ActivityPage() {
       <p className="mt-2 text-sm text-[#66736B]">
         Movimientos de USDC en Stellar {CAVOS_NETWORK === "testnet" ? "Testnet · fondos de prueba" : "Mainnet"}.
       </p>
-      {!isAuthenticated && status !== "loading" ? (
-        <Button className="mt-6 h-11 bg-[#0E7C4F] text-white hover:bg-[#0A5F3C]" onClick={openModal}>Entrar</Button>
-      ) : status !== "ready" ? (
-        <p className="mt-6 text-sm text-[#66736B]" role="status">Preparando tu cuenta…</p>
+      {status !== "ready" ? (
+        <section className="mt-6 space-y-3 rounded-[8px] border border-[#DDE4DC] bg-white p-4">
+          {status === "loading" ? <p className="text-sm text-[#66736B]" role="status">Abriendo tu cuenta…</p>
+          : status === "unconfigured" ? <p className="text-sm text-[#9B1C1C]" role="alert">El acceso a la cuenta no está disponible en este momento. Intenta abrir la app más tarde.</p>
+          : status === "signed-out" ? <>
+            <p className="text-sm text-[#66736B]">Entra a tu cuenta para consultar sus movimientos.</p>
+            {authError && <p className="text-sm text-[#9B1C1C]" role="alert">{authError}</p>}
+            <Button className="h-11 w-full" onClick={openModal}>Entrar</Button>
+          </> : status === "needs-device-approval" || status === "needs-relogin" ? <>
+            <h2 className="font-semibold text-[#17211B]">Confirma que eres tú</h2>
+            <p className="text-sm text-[#66736B]">Vuelve a entrar para abrir tu cuenta en este dispositivo y consultar tu historial.</p>
+            <Button className="h-11 w-full" onClick={openModal}>Volver a entrar</Button>
+            {status === "needs-device-approval" && approveDeviceWithPasskey && <Button variant="outline" className="h-11 w-full" onClick={() => {
+              setAccessError(null);
+              void approveDeviceWithPasskey().catch(() => setAccessError("No pudimos confirmar el dispositivo. Reintenta o vuelve a entrar."));
+            }}>Usar clave de acceso</Button>}
+          </> : status === "undeployed" ? <>
+            <h2 className="font-semibold text-[#17211B]">Prepara tu cuenta Stellar</h2>
+            <p className="text-sm text-[#66736B]">Tu cuenta necesita activarse antes de consultar movimientos.</p>
+            {bootstrapError && <p className="text-sm text-[#9B1C1C]" role="alert">{bootstrapError}</p>}
+            <Button className="h-11 w-full" disabled={bootstrapping} onClick={() => void ensureAccountAndTrustline().catch(() => undefined)}>{bootstrapping ? "Preparando cuenta…" : "Preparar cuenta"}</Button>
+          </> : <>
+            <p className="text-sm text-[#9B1C1C]" role="alert">No pudimos abrir tu cuenta. Vuelve a entrar para intentarlo de nuevo.</p>
+            <Button className="h-11 w-full" onClick={openModal}>Volver a entrar</Button>
+          </>}
+          {accessError && <p className="text-sm text-[#9B1C1C]" role="alert">{accessError}</p>}
+        </section>
       ) : (
         <>
           {address && <p className="mt-4 font-mono text-xs text-[#66736B]" title={address}>{formatShortStellarGAddress(address)}</p>}
