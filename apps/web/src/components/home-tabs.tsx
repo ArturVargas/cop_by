@@ -77,8 +77,8 @@ export function HomeTabs({
             onClick={() => onChange(tab.id)}
             className={
               selected
-                ? "h-10 min-h-10 rounded-[6px] bg-[#0E7C4F] text-sm font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F]"
-                : "h-10 min-h-10 rounded-[6px] text-sm font-semibold text-[#66736B] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F]"
+                ? "h-11 min-h-11 rounded-[6px] bg-[#0E7C4F] text-sm font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F]"
+                : "h-11 min-h-11 rounded-[6px] text-sm font-semibold text-[#66736B] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F]"
             }
           >
             {tab.label}

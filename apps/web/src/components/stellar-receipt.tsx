@@ -68,10 +68,10 @@ export function StellarReceipt({ data, onDone, doneLabel }: {
         }}>
           <Download className="mr-2 h-4 w-4" aria-hidden="true" /> Descargar imagen
         </Button>
-        {exportError && <p className="text-sm text-[#9B1C1C]" role="alert">No se pudo preparar la imagen. <button type="button" className="min-h-10 font-semibold underline" onClick={() => setRetry((value) => value + 1)}>Reintentar</button></p>}
+        {exportError && <p className="text-sm text-[#9B1C1C]" role="alert">No se pudo preparar la imagen. <button type="button" className="min-h-11 font-semibold underline" onClick={() => setRetry((value) => value + 1)}>Reintentar</button></p>}
         <p className="text-sm text-[#66736B]" role="status" aria-live="polite">{feedback}</p>
       </div>
-      <a href={stellarTransactionUrl(data.txHash)} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center text-sm font-semibold text-[#0E7C4F] underline">Ver en Stellar Expert</a>
+      <a href={stellarTransactionUrl(data.txHash)} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center text-sm font-semibold text-[#0E7C4F] underline">Ver en Stellar Expert</a>
       <Button type="button" variant="outline" className="h-11 w-full" onClick={onDone}>{doneLabel}</Button>
     </div>
   );

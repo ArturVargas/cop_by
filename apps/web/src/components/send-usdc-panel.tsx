@@ -266,8 +266,8 @@ export function SendUsdcPanel() {
             </>
           ) : null}
           <dl className="mt-4 space-y-2 text-sm text-[#17211B]">
-            <div className="flex justify-between gap-3"><dt>Costo adicional máximo</dt><dd>{formatUsdcAmount(plan.maxFee)} USDC</dd></div>
-            <div className="flex justify-between gap-3 font-semibold"><dt>Total máximo a descontar</dt><dd>{formatUsdcAmount(plan.maxTotal)} USDC</dd></div>
+            <div className="flex flex-wrap justify-between gap-3"><dt>Costo adicional máximo</dt><dd>{formatUsdcAmount(plan.maxFee)} USDC</dd></div>
+            <div className="flex flex-wrap justify-between gap-3 font-semibold"><dt>Total máximo a descontar</dt><dd>{formatUsdcAmount(plan.maxTotal)} USDC</dd></div>
           </dl>
           <p className="mt-3 text-sm text-[#66736B]">
             {plan.delivery === "claimable"
@@ -325,7 +325,7 @@ export function SendUsdcPanel() {
         />
         <button
           type="button"
-          className="mt-1 text-xs font-semibold text-[#0E7C4F]"
+          className="mt-1 min-h-11 text-sm font-semibold text-[#0E7C4F]"
           onClick={() => {
             if (usdcBalance && Number(usdcBalance) > 0) {
               setAmount(usdcBalance);
@@ -362,7 +362,7 @@ export function SendUsdcPanel() {
           }}
           onBlur={() => setDestTouched(true)}
           placeholder="G…"
-          className="mt-1 h-12 w-full rounded-[8px] border border-[#DDE4DC] bg-white px-3 font-mono text-xs text-[#17211B] outline-none focus:border-[#0E7C4F] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F] aria-[invalid=true]:border-[#9B1C1C]"
+          className="mt-1 h-12 w-full rounded-[8px] border border-[#DDE4DC] bg-white px-3 font-mono text-base text-[#17211B] outline-none focus:border-[#0E7C4F] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F] aria-[invalid=true]:border-[#9B1C1C]"
         />
         {showDestError ? (
           <p id={destErrorId} className="mt-1 text-xs text-[#9B1C1C]" role="alert">
@@ -382,7 +382,7 @@ export function SendUsdcPanel() {
           onChange={(e) => setAlias(e.target.value.slice(0, 24))}
           placeholder="Mamá, Juan…"
           enterKeyHint="next"
-          className="mt-1 h-11 w-full rounded-[8px] border border-[#DDE4DC] bg-white px-3 text-sm text-[#17211B] outline-none focus:border-[#0E7C4F] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F]"
+          className="mt-1 h-11 w-full rounded-[8px] border border-[#DDE4DC] bg-white px-3 text-base text-[#17211B] outline-none focus:border-[#0E7C4F] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F]"
         />
       </div>
 
@@ -406,7 +406,7 @@ export function SendUsdcPanel() {
           }}
           onBlur={() => setMemoTouched(true)}
           placeholder="Referencia del destinatario"
-          className="mt-1 h-11 w-full rounded-[8px] border border-[#DDE4DC] bg-white px-3 font-mono text-sm text-[#17211B] outline-none focus:border-[#0E7C4F] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F] aria-[invalid=true]:border-[#9B1C1C]"
+          className="mt-1 h-11 w-full rounded-[8px] border border-[#DDE4DC] bg-white px-3 font-mono text-base text-[#17211B] outline-none focus:border-[#0E7C4F] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F] aria-[invalid=true]:border-[#9B1C1C]"
         />
         <p id={memoHintId} className="mt-1 text-[11px] text-[#66736B]">
           Añádelo solo si el destinatario te lo pide. Hasta {MEMO_TEXT_MAX_BYTES} caracteres simples; algunos símbolos ocupan más espacio. El destinatario debe tener USDC habilitado.
@@ -427,7 +427,7 @@ export function SendUsdcPanel() {
                 <button
                   type="button"
                   onClick={() => onPickRecipient(item)}
-                  className="min-w-0 flex-1 text-left"
+                  className="min-h-11 min-w-0 flex-1 text-left"
                 >
                   <p className="text-sm font-semibold text-[#17211B]">
                     {item.alias || "Sin alias"}
@@ -441,7 +441,7 @@ export function SendUsdcPanel() {
                 </button>
                 <button
                   type="button"
-                  className="min-h-9 shrink-0 px-1 text-[11px] font-semibold text-[#9B1C1C]"
+                  className="min-h-11 min-w-11 shrink-0 px-2 text-[11px] font-semibold text-[#9B1C1C]"
                   onClick={() => {
                     removeSavedRecipient(item.address);
                     setRecipients(getSavedRecipients());

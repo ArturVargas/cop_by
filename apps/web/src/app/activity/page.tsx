@@ -66,7 +66,7 @@ export default function ActivityPage() {
 
   return (
     <div className="mx-auto w-full max-w-md px-4 py-6 sm:max-w-lg">
-      <Link href="/" className="inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-[#66736B]">
+      <Link href="/" className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-[#66736B]">
         <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Volver
       </Link>
       <div className="mt-4 flex items-center justify-between gap-3">
@@ -91,7 +91,7 @@ export default function ActivityPage() {
           {error && (
             <div className="mt-5 rounded-[8px] bg-[#FDECEE] p-4 text-sm text-[#9B1C1C]" role="alert">
               <p>{error}</p>
-              <button type="button" className="mt-2 min-h-10 font-semibold underline" onClick={() => setRefresh((value) => value + 1)}>Reintentar</button>
+              <button type="button" className="mt-2 min-h-11 font-semibold underline" onClick={() => setRefresh((value) => value + 1)}>Reintentar</button>
             </div>
           )}
           {loading && !items.length && <p className="mt-6 text-sm text-[#66736B]" role="status">Cargando movimientos…</p>}
@@ -121,8 +121,8 @@ export default function ActivityPage() {
                   {item.memo && <p className="mt-3 break-words text-xs text-[#66736B]">Memo: {item.memo}</p>}
                   {item.kind === "claimable" && <p className="mt-3 text-xs text-[#66736B]">Fondos reservados para reclamar. Revisa el estado actual en el explorador.</p>}
                   <div className="mt-2 flex flex-wrap items-center gap-x-4">
-                    {item.kind !== "conversion" && <button type="button" className="min-h-10 text-sm font-semibold text-[#6D45B8] underline" onClick={() => setSelected(item)}>Ver comprobante</button>}
-                    <a href={stellarTransactionUrl(item.txHash)} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center text-sm font-semibold text-[#0E7C4F] underline">Ver en Stellar Expert</a>
+                    {item.kind !== "conversion" && <button type="button" className="min-h-11 text-sm font-semibold text-[#6D45B8] underline" onClick={() => setSelected(item)}>Ver comprobante</button>}
+                    <a href={stellarTransactionUrl(item.txHash)} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center text-sm font-semibold text-[#0E7C4F] underline">Ver en Stellar Expert</a>
                   </div>
                 </li>
               );

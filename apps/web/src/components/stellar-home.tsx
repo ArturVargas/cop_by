@@ -210,7 +210,7 @@ export function StellarHome() {
             onClick={() => void onRefresh()}
             disabled={refreshing}
             aria-busy={refreshing}
-            className="h-9 min-h-9 shrink-0 rounded-full border border-[#DDE4DC] bg-[#F7F8F5] px-3 text-[11px] font-semibold text-[#17211B] disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F]"
+            className="h-11 min-h-11 shrink-0 rounded-full border border-[#DDE4DC] bg-[#F7F8F5] px-3 text-[11px] font-semibold text-[#17211B] disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F]"
           >
             {refreshing ? "Actualizando…" : "Actualizar"}
           </button>
@@ -227,7 +227,7 @@ export function StellarHome() {
             type="button"
             onClick={() => void copyAddress()}
             aria-label="Copiar direccion de cuenta"
-            className="inline-flex h-8 min-h-8 shrink-0 items-center gap-1 rounded-full border border-[#DDE4DC] bg-white px-2.5 text-[11px] font-semibold text-[#17211B] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F]"
+            className="inline-flex h-11 min-h-11 shrink-0 items-center gap-1 rounded-full border border-[#DDE4DC] bg-white px-2.5 text-[11px] font-semibold text-[#17211B] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0E7C4F]"
           >
             {copyStatus === "ok" ? (
               <Check className="h-3.5 w-3.5" aria-hidden="true" />
@@ -262,7 +262,7 @@ export function StellarHome() {
               </p>
             )}
             <Button
-              className="mt-3 h-10 w-full rounded-[8px] bg-[#0E7C4F] text-sm font-semibold text-white hover:bg-[#0A5F3C]"
+              className="mt-3 h-11 w-full rounded-[8px] bg-[#0E7C4F] text-sm font-semibold text-white hover:bg-[#0A5F3C]"
               disabled={bootstrapping}
               onClick={() => void ensureAccountAndTrustline().catch(() => undefined)}
             >
