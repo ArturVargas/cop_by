@@ -66,6 +66,7 @@ function useStellarWalletState() {
   const [balance, setBalance] = useState<{ address: string | null; value: string | null; error: string | null }>({ address: null, value: null, error: null });
   const usdcBalance = balance.address === address ? balance.value : null;
   const balanceError = balance.address === address ? balance.error : null;
+  const balanceRequest = useRef(0);
   const currentAddress = useRef(address);
   currentAddress.current = address;
   const [bootstrapping, setBootstrapping] = useState(false);
@@ -94,6 +95,7 @@ function useStellarWalletState() {
   }
 
   const refreshUsdcBalance = useCallback(async () => {
+    const request = ++balanceRequest.current;
     if (!wallet || wallet.status !== "ready") {
       setBalance({ address, value: null, error: null });
       return null;
@@ -103,13 +105,13 @@ function useStellarWalletState() {
         code: usdc.code,
         issuer: usdc.issuer,
       });
-      if (currentAddress.current !== address) return null;
+      if (currentAddress.current !== address || request !== balanceRequest.current) return null;
       setBalance({ address, value: bal, error: null });
       setTrustlineReady(true);
       setBootstrapError(null);
       return bal;
     } catch {
-      if (currentAddress.current !== address) return null;
+      if (currentAddress.current !== address || request !== balanceRequest.current) return null;
       setBalance((previous) => ({
         address,
         value: previous.address === address ? previous.value : null,
@@ -160,11 +162,13 @@ function useStellarWalletState() {
         }
       }
 
+      if (currentAddress.current !== address) return;
       setTrustlineReady(true);
       setNeedsRelogin(false);
       setBootstrapError(null);
       await refreshUsdcBalance();
     } catch (err) {
+      if (currentAddress.current !== address) return;
       const raw =
         err instanceof Error ? err.message : "No se pudo preparar la cuenta USDC";
       if (isRecoveryReloginError(raw)) {
@@ -175,13 +179,16 @@ function useStellarWalletState() {
       }
       throw err;
     } finally {
-      bootstrapInFlight.current = false;
-      setBootstrapping(false);
+      if (currentAddress.current === address) {
+        bootstrapInFlight.current = false;
+        setBootstrapping(false);
+      }
     }
-  }, [refreshUsdcBalance, usdc.code, usdc.issuer, wallet]);
+  }, [address, refreshUsdcBalance, usdc.code, usdc.issuer, wallet]);
 
   useEffect(() => {
     setTrustlineReady(false);
+    setBootstrapping(false);
     setNeedsRelogin(false);
     setBootstrapError(null);
     bootstrapInFlight.current = false;

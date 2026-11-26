@@ -48,3 +48,5 @@ Task 8 verified: 14 tests, type-check, share/download PNG at both widths; export
 Task 9 verified: production build passed; initial JS measured {"/page": {"before": 439920, "after": 429525}, "/activity/page": {"before": 430565, "after": 428934}}. Send and receipt chunks load on demand; Cavos remains the main shared payload.
 
 Final regression found and fixed: confirmed receipt was hidden when post-send balance refresh failed. Browser check failed before the fix and passes with reviewed Reserve costs, claimable outcome and persisted receipt. No real transaction was sent.
+
+Final regression found and fixed: a delayed balance query could overwrite a newer result. Browser test reproduced 99 replacing 6, then passed with request ordering, offline retention and retry recovery. Bootstrap completion is account-scoped.
