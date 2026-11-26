@@ -18,7 +18,7 @@ test("prepared sends bind delivery and fee before signing",async(t)=>{
  const original=Reserve.connect;
  t.after(()=>{Reserve.connect=original;});
  let ready=true,submitted=0,quoted=0;
- const quote={sendMaxStroops:1234567,payload:{ops:[]}} as unknown as Quote;
+ const quote={sendMaxStroops:0,payload:{send_max_stroops:1234567,ops:[]}} as unknown as Quote;
  const client={destinationReady:async()=>ready,quote:async(request:any)=>{quoted++;quote.request=request;return quote;},send:async(q:Quote)=>{assert.equal(q,quote);submitted++;return {hash:"reserved-hash"};}};
  Reserve.connect=async()=>client as unknown as Reserve;
  const direct=await prepareUsdcSend({source,destination,amount:"1"});

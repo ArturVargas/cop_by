@@ -205,8 +205,9 @@ export async function prepareUsdcSend(input: {
     maxSend: "1",
     ops: [{ type: "create_claimable_balance", destination: input.destination, asset: token, amount }],
   });
-  if (!Number.isSafeInteger(quote.sendMaxStroops) || quote.sendMaxStroops < 0) throw new Error("No pudimos verificar el costo del envío. Intenta de nuevo.");
-  const fee = BigInt(quote.sendMaxStroops);
+  const maximumFee = quote.payload.send_max_stroops;
+  if (!Number.isSafeInteger(maximumFee) || maximumFee < 0) throw new Error("No pudimos verificar el costo del envío. Intenta de nuevo.");
+  const fee = BigInt(maximumFee);
   return { ...details, route: "reserve", delivery: "claimable", client, quote, maxFee: stroopsToUsdc(fee), maxTotal: stroopsToUsdc(units + fee) };
 }
 

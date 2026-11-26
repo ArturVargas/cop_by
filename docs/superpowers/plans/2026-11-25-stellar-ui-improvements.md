@@ -50,3 +50,5 @@ Task 9 verified: production build passed; initial JS measured {"/page": {"before
 Final regression found and fixed: confirmed receipt was hidden when post-send balance refresh failed. Browser check failed before the fix and passes with reviewed Reserve costs, claimable outcome and persisted receipt. No real transaction was sent.
 
 Final regression found and fixed: a delayed balance query could overwrite a newer result. Browser test reproduced 99 replacing 6, then passed with request ordering, offline retention and retry recovery. Bootstrap completion is account-scoped.
+
+Final review: fee display now derives from the verified quote payload instead of duplicate response metadata. Regression with mismatching metadata failed before the change; all 14 tests and type-check pass.
