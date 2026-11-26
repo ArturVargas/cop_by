@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { StellarReceipt } from "@/components/stellar-receipt";
 import type { StellarReceiptData } from "@/components/shareable-receipt";
 import { useStellarWallet } from "@/hooks/use-stellar-wallet";
+import { formatUsdcAmount } from "@/lib/format-usdc";
 import { CAVOS_NETWORK } from "@/lib/cavos-config";
 import {
   getSavedRecipients,
@@ -17,6 +18,9 @@ import {
   MEMO_TEXT_MAX_BYTES,
   normalizeMemoText,
   sendUsdc,
+  prepareUsdcSend,
+  usdcToStroops,
+  type PreparedUsdcSend,
 } from "@/lib/send-usdc";
 import {
   formatShortStellarGAddress,
@@ -24,7 +28,7 @@ import {
   normalizeStellarGAddress,
 } from "@/lib/stellar-address";
 
-type SendStep = "form" | "confirm" | "sending" | "done" | "error";
+type SendStep = "form" | "preparing" | "confirm" | "sending" | "done" | "error";
 
 function humanizeSendError(message: string) {
   const lower = message.toLowerCase();
@@ -37,6 +41,7 @@ function humanizeSendError(message: string) {
   if (lower.includes("reject") || lower.includes("denied")) {
     return "Firma rechazada. Intenta de nuevo.";
   }
+  if (lower.includes("quote_expired")) return "El costo del envío venció. Pulsa Continuar para revisarlo de nuevo antes de confirmar.";
   if (lower.includes("path_moved") || lower.includes("re-quote")) {
     return "La ruta de network fee se movio en testnet. Intenta de nuevo en unos segundos.";
   }
@@ -81,6 +86,7 @@ export function SendUsdcPanel() {
   const [amount, setAmount] = useState("");
   const [memo, setMemo] = useState("");
   const [step, setStep] = useState<SendStep>("form");
+  const [plan, setPlan] = useState<PreparedUsdcSend | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<StellarReceiptData | null>(null);
   const [recipients, setRecipients] = useState<SavedRecipient[]>([]);
@@ -103,8 +109,8 @@ export function SendUsdcPanel() {
 
   const amountError = (() => {
     if (!amount.trim()) return "Ingresa un monto.";
-    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
-      return "El monto debe ser mayor a 0.";
+    if (!/^\d+(?:\.\d{1,7})?$/.test(amount) || !Number.isFinite(amountNumber) || amountNumber <= 0) {
+      return "Ingresa un monto mayor a 0, con hasta 7 decimales.";
     }
     if (Number.isFinite(balanceNumber) && amountNumber > balanceNumber) {
       return "Saldo USDC insuficiente.";
@@ -153,31 +159,29 @@ export function SendUsdcPanel() {
   };
 
   const onConfirmSend = async () => {
-    if (!wallet || wallet.chain !== "stellar" || !canSend) return;
+    if (!wallet || wallet.chain !== "stellar" || !canSend || !plan) return;
 
     setStep("sending");
     setError(null);
     setReceipt(null);
 
     try {
-      const sentAmount = amountNumber.toFixed(7).replace(/\.?0+$/, "");
-      const hash = await sendUsdc({
-        wallet,
-        destination: normalizedDest,
-        amount: sentAmount,
-        memo: normalizedMemo || undefined,
-      });
+      const balance = await refreshUsdcBalance();
+      if (balance === null) throw new Error("No pudimos verificar tu saldo. Reintenta antes de enviar.");
+      if (usdcToStroops(balance) < usdcToStroops(plan.maxTotal)) throw new Error("Saldo insuficiente para cubrir el monto y el costo máximo.");
+      const result = await sendUsdc({ wallet, plan });
 
       setReceipt({
         variant: "stellar-transfer",
-        amount: sentAmount,
+        amount: plan.amount,
         senderAddress: wallet.address,
-        recipientAddress: normalizedDest,
+        recipientAddress: plan.destination,
         recipientAlias: alias.trim() || undefined,
-        memo: normalizedMemo || undefined,
+        memo: plan.memo || undefined,
         network: CAVOS_NETWORK,
         completedAt: new Date().toISOString(),
-        txHash: hash,
+        txHash: result.hash,
+        delivery: result.delivery === "claimable" ? "claimable" : undefined,
       });
       setStep("done");
     } catch (err) {
@@ -195,12 +199,22 @@ export function SendUsdcPanel() {
     void refreshUsdcBalance().catch(() => undefined);
   };
 
-  const onFormSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const onFormSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSubmitted(true);
     setError(null);
-    if (amountError || destError || memoError) return;
-    setStep("confirm");
+    if (amountError || destError || memoError || !wallet || !canSend || step === "preparing") return;
+    setStep("preparing");
+    try {
+      const prepared = await prepareUsdcSend({ source: wallet.address, destination: normalizedDest, amount, memo: normalizedMemo });
+      if (usdcBalance === null || usdcToStroops(usdcBalance) < usdcToStroops(prepared.maxTotal)) throw new Error("Saldo insuficiente para cubrir el monto y el costo máximo.");
+      setPlan(prepared);
+      setStep("confirm");
+    } catch (error) {
+      setPlan(null);
+      setError(humanizeSendError(error instanceof Error ? error.message : "No pudimos preparar el envío. Intenta de nuevo."));
+      setStep("error");
+    }
   };
 
   if (status !== "ready") {
@@ -242,13 +256,13 @@ export function SendUsdcPanel() {
     );
   }
 
-  if (step === "confirm" || step === "sending") {
+  if ((step === "confirm" || step === "sending") && plan) {
     return (
       <div className="flex flex-col gap-4" aria-busy={step === "sending"}>
         <div className="rounded-[8px] border border-[#DDE4DC] bg-white p-4">
           <p className="text-xs font-semibold text-[#66736B]">Confirmas enviar</p>
           <p className="mt-2 text-2xl font-bold text-[#17211B]">
-            {amount} <span className="text-base text-[#66736B]">USDC</span>
+            {formatUsdcAmount(plan.amount)} <span className="text-base text-[#66736B]">USDC</span>
           </p>
           <p className="mt-3 text-xs font-semibold text-[#66736B]">A</p>
           <p
@@ -268,10 +282,14 @@ export function SendUsdcPanel() {
               </p>
             </>
           ) : null}
-          <p className="mt-3 text-[11px] text-[#66736B]">
-            {normalizedMemo
-              ? "Con memo se usa Payment classic; el destino necesita trustline USDC. Network fee la cubre Cavos (relayer)."
-              : "Network fee la cubre Cavos (relayer). Si el destino no tiene trustline, se deja claimable via Reserve."}
+          <dl className="mt-4 space-y-2 text-sm text-[#17211B]">
+            <div className="flex justify-between gap-3"><dt>Costo adicional máximo</dt><dd>{formatUsdcAmount(plan.maxFee)} USDC</dd></div>
+            <div className="flex justify-between gap-3 font-semibold"><dt>Total máximo a descontar</dt><dd>{formatUsdcAmount(plan.maxTotal)} USDC</dd></div>
+          </dl>
+          <p className="mt-3 text-sm text-[#66736B]">
+            {plan.delivery === "claimable"
+              ? "El destinatario aún no puede recibir USDC. Los fondos quedarán reservados: deberá reclamarlos y podría tener costos de activación. Esto todavía no es un depósito en su saldo."
+              : "El destinatario recibirá USDC en su cuenta. Cavos cubre el costo de red."}
           </p>
         </div>
         {step === "sending" ? (
@@ -299,7 +317,8 @@ export function SendUsdcPanel() {
   }
 
   return (
-    <form className="flex flex-col gap-4" onSubmit={onFormSubmit} noValidate>
+    <form className="flex flex-col gap-4" onSubmit={(event) => void onFormSubmit(event)} noValidate aria-busy={step === "preparing"}>
+      <fieldset disabled={step === "preparing"} className="flex min-w-0 flex-col gap-4">
       <div>
         <label htmlFor={amountId} className="text-xs font-semibold text-[#66736B]">
           Monto USDC <span aria-hidden="true">*</span>
@@ -470,6 +489,7 @@ export function SendUsdcPanel() {
       >
         Continuar
       </Button>
+    </fieldset>
     </form>
   );
 }

@@ -9,8 +9,9 @@ import {
   Transaction,
   TransactionBuilder,
   nativeToScVal,
+  StrKey,
 } from "@stellar/stellar-sdk";
-import { Reserve, ReserveError } from "@cavos/reserve";
+import { Reserve, type Quote } from "@cavos/reserve";
 
 import {
   CAVOS_NETWORK,
@@ -47,17 +48,6 @@ type KitRelayInternals = {
   };
 };
 
-const RETRYABLE = new Set([
-  "path_moved",
-  "quote_expired",
-  "bootstrap_busy",
-  "no_path",
-]);
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function networkPassphrase() {
   return CAVOS_NETWORK === "mainnet" ? Networks.PUBLIC : Networks.TESTNET;
 }
@@ -75,29 +65,19 @@ export function normalizeMemoText(raw: string): string {
   return out;
 }
 
-/** USDC amount string/number -> i128 stroops (7 decimals). */
+/** Parse ledger amounts exactly; never round money through a float. */
 export function usdcToStroops(amount: string | number): bigint {
-  const normalized =
-    typeof amount === "number"
-      ? amount.toFixed(7)
-      : Number(amount).toFixed(7);
-  const [whole, frac = ""] = normalized.split(".");
-  return BigInt(whole) * 10_000_000n + BigInt(frac.padEnd(7, "0").slice(0, 7));
+  const value = String(amount);
+  if (!/^\d+(?:\.\d{1,7})?$/.test(value)) throw new Error("Usa un monto válido con hasta 7 decimales.");
+  const [whole, fraction = ""] = value.split(".");
+  const units = BigInt(whole) * 10_000_000n + BigInt(fraction.padEnd(7, "0"));
+  if (units > 9_223_372_036_854_775_807n) throw new Error("El monto supera el límite de Stellar.");
+  return units;
 }
 
-function isRetryableReserveError(err: unknown) {
-  if (err instanceof ReserveError) return RETRYABLE.has(err.code);
-  if (err instanceof Error) {
-    const lower = err.message.toLowerCase();
-    return (
-      lower.includes("path_moved") ||
-      lower.includes("quote_expired") ||
-      lower.includes("bootstrap_busy") ||
-      lower.includes("no_path") ||
-      lower.includes("re-quote")
-    );
-  }
-  return false;
+function stroopsToUsdc(units: bigint): string {
+  const fraction = (units % 10_000_000n).toString().padStart(7, "0").replace(/0+$/, "");
+  return `${units / 10_000_000n}${fraction ? `.${fraction}` : ""}`;
 }
 
 async function submitSponsoredClassic(
@@ -110,12 +90,7 @@ async function submitSponsoredClassic(
     const bump = kit.adapter.wrapFeeBump(signedInner, feeSource);
     return kit.relayer.submit("fee-bump", bump.toXDR());
   }
-  if (kit.adapter?.submit) {
-    return kit.adapter.submit(signedInner);
-  }
-  const server = new Horizon.Server(getStellarHorizonUrl());
-  const result = await server.submitTransaction(signedInner);
-  return result.hash;
+  throw new Error("No pudimos confirmar el envío sin costo de red. Vuelve a intentarlo.");
 }
 
 /**
@@ -188,118 +163,66 @@ export async function sendUsdcClassicWithMemo(input: {
   return submitSponsoredClassic(input.wallet, signed);
 }
 
-/**
- * Reserve.pay: fee in USDC via SDEX. Needed when dest cannot receive a Payment
- * yet (claimable), or as fallback. Retries path_moved / quote_expired.
- * No memo support.
- */
-export async function sendUsdcViaReserve(input: {
-  wallet: StellarWallet;
+type SendDetails = {
+  source: string;
   destination: string;
   amount: string;
-  maxAttempts?: number;
-}): Promise<string> {
-  const usdc = getStellarUsdc();
-  const token = `${usdc.code}:${usdc.issuer}`;
-  const reserve = await Reserve.connect(CAVOS_NETWORK);
-  const maxAttempts = input.maxAttempts ?? 4;
-  let lastError: unknown;
+  memo: string;
+  maxFee: string;
+  maxTotal: string;
+};
 
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    try {
-      const { hash } = await reserve.pay(
-        {
-          source: input.wallet.address,
-          destination: input.destination,
-          amount: input.amount,
-          token,
-          maxSend: "1",
-        },
-        (xdr) => input.wallet.signXdr(xdr)
-      );
-      return hash;
-    } catch (err) {
-      lastError = err;
-      if (!isRetryableReserveError(err) || attempt === maxAttempts - 1) throw err;
-      await sleep(400 * (attempt + 1));
-    }
-  }
+export type PreparedUsdcSend = SendDetails & (
+  | { route: "sac" | "classic"; delivery: "payment" }
+  | { route: "reserve"; delivery: "claimable"; client: Reserve; quote: Quote }
+);
 
-  throw lastError instanceof Error ? lastError : new Error("Error al enviar USDC");
-}
-
-/**
- * With memo: classic Payment + Memo (kit fee-bump). Dest must hold USDC trustline.
- * Without memo: Kit SAC when dest ready; Reserve otherwise / on SAC fail.
- */
-export async function sendUsdc(input: {
-  wallet: StellarWallet;
+/** Prepare exactly what the user will review; failures never choose a paid fallback. */
+export async function prepareUsdcSend(input: {
+  source: string;
   destination: string;
   amount: string;
   memo?: string;
-}): Promise<string> {
+}): Promise<PreparedUsdcSend> {
+  if (!StrKey.isValidEd25519PublicKey(input.source) || !StrKey.isValidEd25519PublicKey(input.destination) || input.source === input.destination) {
+    throw new Error("Revisa la cuenta del destinatario.");
+  }
+  const units = usdcToStroops(input.amount);
+  if (units === 0n) throw new Error("El monto debe ser mayor a 0.");
+  const amount = stroopsToUsdc(units);
+  const memo = input.memo?.trim() ?? "";
+  if (new TextEncoder().encode(memo).length > MEMO_TEXT_MAX_BYTES) throw new Error("El memo supera los 28 bytes permitidos.");
   const usdc = getStellarUsdc();
   const token = `${usdc.code}:${usdc.issuer}`;
-  const amount = Number(input.amount).toFixed(7).replace(/\.?0+$/, "") || "0";
-  const memo = input.memo ? normalizeMemoText(input.memo) : "";
-
-  if (memo) {
-    const reserve = await Reserve.connect(CAVOS_NETWORK);
-    let destReady = false;
-    try {
-      destReady = await reserve.destinationReady(input.destination, token);
-    } catch {
-      destReady = false;
-    }
-    if (!destReady) {
-      throw new Error(
-        "Memo requiere destino con trustline USDC (no se puede usar claimable)."
-      );
-    }
-    return sendUsdcClassicWithMemo({
-      wallet: input.wallet,
-      destination: input.destination,
-      amount,
-      memo,
-    });
-  }
-
-  const reserve = await Reserve.connect(CAVOS_NETWORK);
-  let destReady = false;
-  try {
-    destReady = await reserve.destinationReady(input.destination, token);
-  } catch {
-    destReady = false;
-  }
-
-  if (destReady) {
-    try {
-      return await sendUsdcViaKitSac({
-        wallet: input.wallet,
-        destination: input.destination,
-        amount,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message.toLowerCase() : "";
-      if (
-        msg.includes("trust") ||
-        msg.includes("auth") ||
-        msg.includes("invoke") ||
-        msg.includes("soroban")
-      ) {
-        return sendUsdcViaReserve({
-          wallet: input.wallet,
-          destination: input.destination,
-          amount,
-        });
-      }
-      throw err;
-    }
-  }
-
-  return sendUsdcViaReserve({
-    wallet: input.wallet,
-    destination: input.destination,
-    amount,
+  const client = await Reserve.connect(CAVOS_NETWORK);
+  const ready = await client.destinationReady(input.destination, token);
+  const details = { source: input.source, destination: input.destination, amount, memo, maxFee: "0", maxTotal: amount };
+  if (ready) return { ...details, route: memo ? "classic" : "sac", delivery: "payment" };
+  if (memo) throw new Error("Con memo, el destinatario debe tener habilitado USDC en su cuenta.");
+  const quote = await client.quote({
+    source: input.source,
+    feeToken: token,
+    maxSend: "1",
+    ops: [{ type: "create_claimable_balance", destination: input.destination, asset: token, amount }],
   });
+  if (!Number.isSafeInteger(quote.sendMaxStroops) || quote.sendMaxStroops < 0) throw new Error("No pudimos verificar el costo del envío. Intenta de nuevo.");
+  const fee = BigInt(quote.sendMaxStroops);
+  return { ...details, route: "reserve", delivery: "claimable", client, quote, maxFee: stroopsToUsdc(fee), maxTotal: stroopsToUsdc(units + fee) };
+}
+
+export async function sendUsdc({ wallet, plan }: {
+  wallet: StellarWallet;
+  plan: PreparedUsdcSend;
+}): Promise<{ hash: string; delivery: "payment" | "claimable" }> {
+  if (wallet.address !== plan.source) throw new Error("La cuenta cambió. Revisa el envío de nuevo.");
+  let hash: string;
+  if (plan.route === "reserve") {
+    // Keep the reviewed quote; expiry or price changes require a new user confirmation.
+    ({ hash } = await plan.client.send(plan.quote, (xdr) => wallet.signXdr(xdr)));
+  } else if (plan.route === "classic") {
+    hash = await sendUsdcClassicWithMemo({ wallet, destination: plan.destination, amount: plan.amount, memo: plan.memo });
+  } else {
+    hash = await sendUsdcViaKitSac({ wallet, destination: plan.destination, amount: plan.amount });
+  }
+  return { hash, delivery: plan.delivery };
 }

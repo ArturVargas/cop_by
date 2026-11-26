@@ -310,7 +310,7 @@ export function StellarHome() {
       </HomeTabPanel>
 
       <HomeTabPanel tab="enviar" active={tab} baseId={tabsBaseId}>
-        <SendUsdcPanel />
+        <SendUsdcPanel key={address} />
       </HomeTabPanel>
 
       <HomeTabPanel tab="gastar" active={tab} baseId={tabsBaseId}>

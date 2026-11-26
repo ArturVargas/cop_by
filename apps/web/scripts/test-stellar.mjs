@@ -13,7 +13,7 @@ try {
   const output = join(directory, "stellar.test.cjs");
   await build({
     stdin: {
-      contents: 'import "./src/lib/stellar-activity.test"; import "./src/components/shareable-receipt.test";',
+      contents: 'import "./src/lib/stellar-activity.test"; import "./src/lib/send-usdc.test"; import "./src/components/shareable-receipt.test";',
       resolveDir: root,
       loader: "tsx",
     },

@@ -12,7 +12,7 @@ Preserve Spanish UI, "Non-custodial Wallet", Stellar Testnet and full receipt ve
 
 ## Tasks
 - [x] 1. Shared balance: preserve last confirmed value on errors, visible retry, prevent stale-balance sends. Browser checks: shared consumers, offline, retry and account changes.
-- [ ] 2. Prepare transfer before confirmation: display delivery and maximum extra fee; never silently switch to a paid route. Tests: sponsored/claimable plans, exact amount/fee arithmetic, expired quote and receipt delivery.
+- [x] 2. Prepare transfer before confirmation: display delivery and maximum extra fee; never silently switch to a paid route. Tests: sponsored/claimable plans, exact amount/fee arithmetic, expired quote and receipt delivery.
 - [ ] 3. Onboarding: native modal, scrollable short viewports, contained focus and dismissal. Browser: 568x320, Tab, Escape.
 - [ ] 4. Copy: distinguish available/pending spending; explain memo and reserved funds without SDK jargon. Review actual states and labels.
 - [ ] 5. Keyboard: tabs Home/End focus; account disclosure state, Escape/outside dismissal. Browser assertions.
@@ -30,3 +30,5 @@ Preserve Spanish UI, "Non-custodial Wallet", Stellar Testnet and full receipt ve
 - Shared palette must survive html-to-image export; dynamic chunks must load on Cloudflare (tasks 8/9/final).
 
 Task 1 verified: browser regression failed before the change (consumer B stayed at 20), then passed (shared 8, offline preservation, retry); TypeScript passed.
+
+Task 2 verified: 14 unit tests and type-check pass. Exact amount parsing failed before fix; prepared routes, fee caps, account mismatch, expired quotes and no paid fallback covered.
