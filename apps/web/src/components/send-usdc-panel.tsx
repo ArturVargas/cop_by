@@ -208,18 +208,6 @@ export function SendUsdcPanel() {
     );
   }
 
-  if (balanceError || usdcBalance === null) {
-    return <div className="space-y-3"><p className="text-sm text-wallet-muted" role="status">{balanceError ?? "Consultando tu saldo…"}</p>{balanceError && <Button type="button" variant="outline" onClick={() => void refreshUsdcBalance()}>Reintentar consulta</Button>}</div>;
-  }
-
-  if (!trustlineReady) {
-    return (
-      <p className="text-sm text-wallet-muted" role="status">
-        Preparando cuenta USDC…
-      </p>
-    );
-  }
-
   if (step === "done" && receipt) {
     return (
       <Suspense fallback={<p className="text-sm text-wallet-muted" role="status">Cargando comprobante…</p>}><StellarReceipt
@@ -236,6 +224,18 @@ export function SendUsdcPanel() {
             setMemoTouched(false);
           }}
       /></Suspense>
+    );
+  }
+
+  if (balanceError || usdcBalance === null) {
+    return <div className="space-y-3"><p className="text-sm text-wallet-muted" role="status">{balanceError ?? "Consultando tu saldo…"}</p>{balanceError && <Button type="button" variant="outline" onClick={() => void refreshUsdcBalance()}>Reintentar consulta</Button>}</div>;
+  }
+
+  if (!trustlineReady) {
+    return (
+      <p className="text-sm text-wallet-muted" role="status">
+        Preparando cuenta USDC…
+      </p>
     );
   }
 

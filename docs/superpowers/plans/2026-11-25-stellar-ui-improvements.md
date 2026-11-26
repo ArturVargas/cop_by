@@ -46,3 +46,5 @@ Task 7 verified: seven Activity access states show the appropriate explanation/a
 Task 8 verified: 14 tests, type-check, share/download PNG at both widths; exported image visually retains full content and palette. Detector: no primary findings, 16 small-font advisories reserved for final polish.
 
 Task 9 verified: production build passed; initial JS measured {"/page": {"before": 439920, "after": 429525}, "/activity/page": {"before": 430565, "after": 428934}}. Send and receipt chunks load on demand; Cavos remains the main shared payload.
+
+Final regression found and fixed: confirmed receipt was hidden when post-send balance refresh failed. Browser check failed before the fix and passes with reviewed Reserve costs, claimable outcome and persisted receipt. No real transaction was sent.
