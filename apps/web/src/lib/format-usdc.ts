@@ -11,3 +11,9 @@ export function formatUsdcAmountLabel(amount: string) {
   const cents = BigInt(whole) * 100n + (BigInt(fraction.padEnd(3, "0").slice(0, 3)) + 5n) / 10n;
   return `${cents / 100n}.${(cents % 100n).toString().padStart(2, "0")}`;
 }
+
+/** Editable amount: at least two decimals, without discarding nonzero precision. */
+export function formatUsdcInputAmount(amount: string) {
+  const [whole, fraction = ""] = amount.split(".");
+  return `${whole}.${fraction.replace(/0+$/, "").padEnd(2, "0")}`;
+}

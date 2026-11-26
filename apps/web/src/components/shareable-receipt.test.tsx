@@ -73,3 +73,13 @@ test("USDC balance labels show exactly two decimals without rounding the transfe
   assert.equal(format("1.0050000"), "1.01");
   assert.equal(format("922337203685.4775807"), "922337203685.48");
 });
+
+import { formatUsdcInputAmount } from "../lib/format-usdc";
+test("USDC inputs remove zero padding while preserving spendable precision", () => {
+  const format = formatUsdcInputAmount;
+  assert.equal(format("15.0000000"), "15.00");
+  assert.equal(format("15"), "15.00");
+  assert.equal(format("15.2300000"), "15.23");
+  assert.equal(format("0.1234567"), "0.1234567");
+  assert.equal(format("0.0000001"), "0.0000001");
+});

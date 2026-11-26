@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 const StellarReceipt = lazy(() => import("@/components/stellar-receipt").then((module) => ({ default: module.StellarReceipt })));
 import type { StellarReceiptData } from "@/components/shareable-receipt";
 import { useStellarWallet } from "@/hooks/use-stellar-wallet";
-import { formatUsdcAmount, formatUsdcAmountLabel } from "@/lib/format-usdc";
+import { formatUsdcAmount, formatUsdcAmountLabel, formatUsdcInputAmount } from "@/lib/format-usdc";
 import { CAVOS_NETWORK } from "@/lib/cavos-config";
 import {
   getSavedRecipients,
@@ -319,7 +319,10 @@ export function SendUsdcPanel() {
             setAmount(e.target.value.replace(/[^0-9.]/g, ""));
             setError(null);
           }}
-          onBlur={() => setAmountTouched(true)}
+          onBlur={() => {
+            setAmountTouched(true);
+            if (/^\d+(?:\.\d{1,7})?$/.test(amount)) setAmount(formatUsdcInputAmount(amount));
+          }}
           placeholder="0.00"
           className="mt-1 h-12 w-full rounded-[8px] border border-wallet-border bg-wallet-card px-3 text-base text-wallet-ink outline-none focus:border-wallet-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wallet-brand aria-[invalid=true]:border-wallet-negative"
         />
@@ -328,7 +331,7 @@ export function SendUsdcPanel() {
           className="mt-1 min-h-11 text-sm font-semibold text-wallet-brand"
           onClick={() => {
             if (usdcBalance && Number(usdcBalance) > 0) {
-              setAmount(usdcBalance);
+              setAmount(formatUsdcInputAmount(usdcBalance));
               setAmountTouched(true);
             }
           }}
