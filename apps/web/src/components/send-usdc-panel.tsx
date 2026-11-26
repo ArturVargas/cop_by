@@ -243,8 +243,8 @@ export function SendUsdcPanel() {
     return (
       <div className="flex flex-col gap-4" aria-busy={step === "sending"}>
         <div className="rounded-[8px] border border-wallet-border bg-wallet-card p-4">
-          <p className="text-xs font-semibold text-wallet-muted">Revisa tu envío</p>
-          <p className="mt-2 text-2xl font-bold text-wallet-ink">
+          <p className="text-sm font-semibold text-wallet-muted">Revisa tu envío</p>
+          <p className="mt-2 break-words text-2xl font-bold tabular-nums text-wallet-ink">
             {formatUsdcAmount(plan.amount)} <span className="text-base text-wallet-muted">USDC</span>
           </p>
           <p className="mt-3 text-xs font-semibold text-wallet-muted">A</p>
@@ -266,8 +266,8 @@ export function SendUsdcPanel() {
             </>
           ) : null}
           <dl className="mt-4 space-y-2 text-sm text-wallet-ink">
-            <div className="flex flex-wrap justify-between gap-3"><dt>Costo adicional máximo</dt><dd>{formatUsdcAmount(plan.maxFee)} USDC</dd></div>
-            <div className="flex flex-wrap justify-between gap-3 font-semibold"><dt>Total máximo a descontar</dt><dd>{formatUsdcAmount(plan.maxTotal)} USDC</dd></div>
+            <div className="flex flex-wrap justify-between gap-3"><dt>Costo adicional máximo</dt><dd className="max-w-full break-words tabular-nums">{formatUsdcAmount(plan.maxFee)} USDC</dd></div>
+            <div className="flex flex-wrap justify-between gap-3 font-semibold"><dt>Total máximo a descontar</dt><dd className="max-w-full break-words tabular-nums">{formatUsdcAmount(plan.maxTotal)} USDC</dd></div>
           </dl>
           <p className="mt-3 text-sm text-wallet-muted">
             {plan.delivery === "claimable"
@@ -303,7 +303,7 @@ export function SendUsdcPanel() {
     <form className="flex flex-col gap-4" onSubmit={(event) => void onFormSubmit(event)} noValidate aria-busy={step === "preparing"}>
       <fieldset disabled={step === "preparing"} className="flex min-w-0 flex-col gap-4">
       <div>
-        <label htmlFor={amountId} className="text-xs font-semibold text-wallet-muted">
+        <label htmlFor={amountId} className="text-sm font-semibold text-wallet-muted">
           Monto USDC <span aria-hidden="true">*</span>
         </label>
         <input
@@ -343,7 +343,7 @@ export function SendUsdcPanel() {
       </div>
 
       <div>
-        <label htmlFor={destId} className="text-xs font-semibold text-wallet-muted">
+        <label htmlFor={destId} className="text-sm font-semibold text-wallet-muted">
           Cuenta Stellar del destinatario <span aria-hidden="true">*</span>
         </label>
         <input
@@ -372,7 +372,7 @@ export function SendUsdcPanel() {
       </div>
 
       <div>
-        <label htmlFor={aliasId} className="text-xs font-semibold text-wallet-muted">
+        <label htmlFor={aliasId} className="text-sm font-semibold text-wallet-muted">
           Alias (opcional)
         </label>
         <input
@@ -387,7 +387,7 @@ export function SendUsdcPanel() {
       </div>
 
       <div>
-        <label htmlFor={memoId} className="text-xs font-semibold text-wallet-muted">
+        <label htmlFor={memoId} className="text-sm font-semibold text-wallet-muted">
           Memo (opcional)
         </label>
         <input
@@ -408,7 +408,7 @@ export function SendUsdcPanel() {
           placeholder="Referencia del destinatario"
           className="mt-1 h-11 w-full rounded-[8px] border border-wallet-border bg-wallet-card px-3 font-mono text-base text-wallet-ink outline-none focus:border-wallet-brand focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wallet-brand aria-[invalid=true]:border-wallet-negative"
         />
-        <p id={memoHintId} className="mt-1 text-[11px] text-wallet-muted">
+        <p id={memoHintId} className="mt-1 text-xs text-wallet-muted">
           Añádelo solo si el destinatario te lo pide. Hasta {MEMO_TEXT_MAX_BYTES} caracteres simples; algunos símbolos ocupan más espacio. El destinatario debe tener USDC habilitado.
         </p>
         {showMemoError ? (
@@ -420,7 +420,7 @@ export function SendUsdcPanel() {
 
       {recipients.length > 0 && (
         <div className="rounded-[8px] border border-wallet-border bg-wallet-card p-3">
-          <p className="text-xs font-semibold text-wallet-muted">Guardados</p>
+          <p className="text-sm font-semibold text-wallet-muted">Guardados</p>
           <ul className="mt-2 space-y-2">
             {recipients.map((item) => (
               <li key={item.address} className="flex items-start gap-2">
@@ -433,7 +433,7 @@ export function SendUsdcPanel() {
                     {item.alias || "Sin alias"}
                   </p>
                   <p
-                    className="font-mono text-[10px] text-wallet-muted"
+                    className="font-mono text-xs text-wallet-muted"
                     title={item.address}
                   >
                     {formatShortStellarGAddress(item.address)}
@@ -441,7 +441,7 @@ export function SendUsdcPanel() {
                 </button>
                 <button
                   type="button"
-                  className="min-h-11 min-w-11 shrink-0 px-2 text-[11px] font-semibold text-wallet-negative"
+                  className="min-h-11 min-w-11 shrink-0 px-2 text-xs font-semibold text-wallet-negative"
                   onClick={() => {
                     removeSavedRecipient(item.address);
                     setRecipients(getSavedRecipients());

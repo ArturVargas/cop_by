@@ -52,3 +52,5 @@ Final regression found and fixed: confirmed receipt was hidden when post-send ba
 Final regression found and fixed: a delayed balance query could overwrite a newer result. Browser test reproduced 99 replacing 6, then passed with request ordering, offline retention and retry recovery. Bootstrap completion is account-scoped.
 
 Final review: fee display now derives from the verified quote payload instead of duplicate response metadata. Regression with mismatching metadata failed before the change; all 14 tests and type-check pass.
+
+Final polish verified: responsive captures at 320/390/568/768/1280px, no horizontal overflow or runtime exceptions; touch/keyboard/access/send/export checks pass. Text sizes normalized, exact balance formatting reused, metadata reflects available functions. Detector has no primary findings; three font advisories belong to the dormant Celo connect-button and are outside this Stellar pass. Production deployment and independent review remain pending.

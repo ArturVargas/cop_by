@@ -11,6 +11,7 @@ import {
   type HomeTab,
 } from "@/components/home-tabs";
 const SendUsdcPanel = lazy(() => import("@/components/send-usdc-panel").then((module) => ({ default: module.SendUsdcPanel })));
+import { formatUsdcAmount } from "@/lib/format-usdc";
 import { useStellarWallet } from "@/hooks/use-stellar-wallet";
 import { CAVOS_NETWORK } from "@/lib/cavos-config";
 import { formatShortStellarGAddress } from "@/lib/stellar-address";
@@ -22,13 +23,7 @@ import {
 } from "@/components/onboarding-screen";
 
 function formatUsdc(balance: string | null) {
-  if (balance === null) return "—";
-  const n = Number(balance);
-  if (!Number.isFinite(n)) return balance;
-  return n.toLocaleString("es-CO", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 6,
-  });
+  return balance === null ? "—" : formatUsdcAmount(balance);
 }
 
 export function StellarHome() {
@@ -198,9 +193,9 @@ export function StellarHome() {
 
       <section className="rounded-[8px] border border-wallet-border bg-wallet-card p-4">
         <div className="flex items-start justify-between gap-2">
-          <div>
-            <p className="text-xs font-semibold text-wallet-muted">Saldo</p>
-            <p className="mt-1 text-3xl font-bold text-wallet-ink">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-wallet-muted">{balanceError ? "Último saldo confirmado" : "Saldo"}</p>
+            <p className="mt-1 break-words text-3xl font-bold tabular-nums text-wallet-ink">
               {formatUsdc(usdcBalance)}{" "}
               <span className="text-base font-semibold text-wallet-muted">USDC</span>
             </p>
@@ -210,7 +205,7 @@ export function StellarHome() {
             onClick={() => void onRefresh()}
             disabled={refreshing}
             aria-busy={refreshing}
-            className="h-11 min-h-11 shrink-0 rounded-full border border-wallet-border bg-wallet-surface px-3 text-[11px] font-semibold text-wallet-ink disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wallet-brand"
+            className="h-11 min-h-11 shrink-0 rounded-full border border-wallet-border bg-wallet-surface px-3 text-xs font-semibold text-wallet-ink disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wallet-brand"
           >
             {refreshing ? "Actualizando…" : "Actualizar"}
           </button>
@@ -218,7 +213,7 @@ export function StellarHome() {
         {balanceError && <p className="mt-3 text-sm text-wallet-negative" role="alert">{balanceError}{usdcBalance !== null ? " Mostramos el último saldo confirmado." : ""}</p>}
         <div className="mt-3 flex items-center justify-between gap-2">
           <p
-            className="font-mono text-[11px] leading-4 text-wallet-muted"
+            className="font-mono text-xs leading-4 text-wallet-muted"
             title={address ?? undefined}
           >
             {address ? formatShortStellarGAddress(address) : "—"}
@@ -227,7 +222,7 @@ export function StellarHome() {
             type="button"
             onClick={() => void copyAddress()}
             aria-label="Copiar direccion de cuenta"
-            className="inline-flex h-11 min-h-11 shrink-0 items-center gap-1 rounded-full border border-wallet-border bg-wallet-card px-2.5 text-[11px] font-semibold text-wallet-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wallet-brand"
+            className="inline-flex h-11 min-h-11 shrink-0 items-center gap-1 rounded-full border border-wallet-border bg-wallet-card px-2.5 text-xs font-semibold text-wallet-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wallet-brand"
           >
             {copyStatus === "ok" ? (
               <Check className="h-3.5 w-3.5" aria-hidden="true" />
@@ -250,7 +245,7 @@ export function StellarHome() {
         </p>
         {!trustlineReady && (
           <>
-            <p className="mt-2 text-[11px] text-wallet-muted" role="status">
+            <p className="mt-2 text-xs text-wallet-muted" role="status">
               Preparando cuenta…
             </p>
             {bootstrapError && (
@@ -298,12 +293,12 @@ export function StellarHome() {
               </Button>
             </div>
           )}
-          <p className="mt-3 text-[11px] text-wallet-muted">
+          <p className="mt-3 text-xs text-wallet-muted">
             {CAVOS_NETWORK === "testnet"
               ? "Usa solo USDC de prueba en Stellar Testnet."
               : "Envía únicamente USDC de la red Stellar a esta cuenta."}
           </p>
-          <p className="mt-1 break-all font-mono text-[10px] text-wallet-muted" title={usdc.issuer}>
+          <p className="mt-1 break-all font-mono text-xs text-wallet-muted" title={usdc.issuer}>
             {usdc.code}:{formatShortStellarGAddress(usdc.issuer)}
           </p>
         </div>

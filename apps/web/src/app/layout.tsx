@@ -8,9 +8,9 @@ import { Navbar } from "@/components/navbar";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "COP By — USDC a pesos",
+  title: "COP By · Wallet Stellar",
   description:
-    "Wallet Stellar con USDC. Envia o gasta a Bre-B, Pix y SPEI via TuCOP.",
+    "Recibe y envía USDC en Stellar. Consulta tus movimientos y comparte comprobantes.",
   other: {
     "talentapp:project_verification":
       "8abf4ec6d9e7825d922515f134d0ba0299c4deefc75a1b67a4c3b1712dd2e1f04e453f42e36f29110cd4efeb45dd43b6a878892c6f08b4248cab4659c124eb6a",

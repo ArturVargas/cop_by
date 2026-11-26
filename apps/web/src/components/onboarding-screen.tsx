@@ -28,10 +28,13 @@ export function markOnboardingSeen() {
 export function OnboardingScreen({ onStart }: { onStart: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  const titleRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     dialog.showModal();
+    titleRef.current?.focus({ preventScroll: true });
+    dialog.scrollTop = 0;
     return () => dialog.close();
   }, []);
 
@@ -40,10 +43,12 @@ export function OnboardingScreen({ onStart }: { onStart: () => void }) {
       <div className="mx-auto my-auto shrink-0 w-full max-w-md rounded-[8px] border border-wallet-border bg-wallet-card p-6 shadow-sm">
         <img
           src={COPM_ICON_URL}
+          width={48}
+          height={48}
           alt="COP By"
           className="h-12 w-12 rounded-[8px]"
         />
-        <h1 id={titleId} className="mt-5 text-2xl font-bold leading-tight text-wallet-ink">
+        <h1 ref={titleRef} tabIndex={-1} id={titleId} className="mt-5 text-2xl font-bold leading-tight text-wallet-ink">
           Tu USDC en Stellar
         </h1>
         <p className="mt-2 text-sm leading-5 text-wallet-muted">
@@ -61,7 +66,6 @@ export function OnboardingScreen({ onStart }: { onStart: () => void }) {
         </ul>
         <Button
           className="mt-6 h-12 w-full rounded-[8px] bg-wallet-purple text-base font-semibold text-wallet-on-brand hover:bg-wallet-purple-hover"
-          autoFocus
           onClick={() => dialogRef.current?.close()}
         >
           Empezar

@@ -23,6 +23,10 @@ typography:
   body:
     fontFamily: "Inter, system-ui, sans-serif"
     fontSize: "16px"
+  metadata:
+    fontSize: "12px"
+  label:
+    fontSize: "14px"
   title:
     fontSize: "24px"
     fontWeight: 700

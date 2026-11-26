@@ -3,16 +3,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { LogOut, Wallet } from "lucide-react";
 
+import { formatUsdcAmount } from "@/lib/format-usdc";
 import { useStellarWallet } from "@/hooks/use-stellar-wallet";
 
 function formatUsdc(balance: string | null) {
-  if (balance === null) return "—";
-  const n = Number(balance);
-  if (!Number.isFinite(n)) return balance;
-  return n.toLocaleString("es-CO", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 6,
-  });
+  return balance === null ? "—" : formatUsdcAmount(balance);
 }
 
 export function CavosAccountControls() {
@@ -51,7 +46,7 @@ export function CavosAccountControls() {
 
   if (!configured) {
     return (
-      <span className="inline-flex h-11 items-center rounded-full border border-wallet-warning bg-wallet-warning-soft px-3 text-[11px] font-semibold text-wallet-ink">
+      <span className="inline-flex h-11 items-center rounded-full border border-wallet-warning bg-wallet-warning-soft px-3 text-xs font-semibold text-wallet-ink">
         Configura Cavos
       </span>
     );
@@ -59,7 +54,7 @@ export function CavosAccountControls() {
 
   if (status === "loading") {
     return (
-      <span className="inline-flex h-11 items-center rounded-full border border-wallet-border bg-wallet-card px-3 text-[11px] font-semibold text-wallet-muted">
+      <span className="inline-flex h-11 items-center rounded-full border border-wallet-border bg-wallet-card px-3 text-xs font-semibold text-wallet-muted">
         Cargando
       </span>
     );
@@ -93,8 +88,8 @@ export function CavosAccountControls() {
 
   return (
     <div ref={accountRef} className="relative flex items-center gap-1.5" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMenuOpen(false); }}>
-      <span className="inline-flex h-11 max-w-[140px] items-center truncate rounded-full border border-wallet-positive-border bg-wallet-positive-soft px-2.5 text-[11px] font-semibold text-wallet-brand">
-        {balanceError ? "Saldo sin actualizar" : `${formatUsdc(usdcBalance)} USDC`}
+      <span className="inline-flex h-11 max-w-[140px] items-center truncate rounded-full border border-wallet-positive-border bg-wallet-positive-soft px-2.5 text-xs font-semibold text-wallet-brand">
+        {balanceError ? "Saldo pendiente" : `${formatUsdc(usdcBalance)} USDC`}
       </span>
       <button
         type="button"

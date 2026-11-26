@@ -15,6 +15,8 @@ export function Navbar() {
         <div className="flex items-center gap-2">
           <img
             src={COPM_ICON_URL}
+          width={28}
+          height={28}
             alt="COP By"
             className="h-7 w-7 rounded-[8px]"
           />
@@ -22,7 +24,7 @@ export function Navbar() {
             <p className="text-sm font-semibold leading-none text-wallet-ink">
               COP By
             </p>
-            <p className="mt-0.5 text-[11px] leading-none text-wallet-muted">
+            <p className="mt-0.5 text-xs leading-none text-wallet-muted">
               USDC · Stellar {CAVOS_NETWORK}
             </p>
           </div>
