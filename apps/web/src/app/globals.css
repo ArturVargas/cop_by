@@ -78,3 +78,8 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Native modal keeps background controls out of the focus order. */
+.onboarding-dialog[open] { display: flex; flex-direction: column; }
+dialog:modal { overscroll-behavior: contain; }
+dialog::backdrop { overflow: hidden; overscroll-behavior: contain; }

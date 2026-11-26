@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useId, useRef } from "react";
 import { Check } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -25,15 +26,24 @@ export function markOnboardingSeen() {
 }
 
 export function OnboardingScreen({ onStart }: { onStart: () => void }) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
+
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[#F7F8F5] px-4">
-      <div className="w-full max-w-md rounded-[8px] border border-[#DDE4DC] bg-white p-6 shadow-sm">
+    <dialog ref={dialogRef} aria-labelledby={titleId} onClose={() => { if (!dialogRef.current?.open) onStart(); }} className="onboarding-dialog m-0 h-[100dvh] max-h-none w-full max-w-none overflow-y-auto border-0 bg-[#F7F8F5] p-4">
+      <div className="mx-auto my-auto shrink-0 w-full max-w-md rounded-[8px] border border-[#DDE4DC] bg-white p-6 shadow-sm">
         <img
           src={COPM_ICON_URL}
           alt="COP By"
           className="h-12 w-12 rounded-[8px]"
         />
-        <h1 className="mt-5 text-2xl font-bold leading-tight text-[#17211B]">
+        <h1 id={titleId} className="mt-5 text-2xl font-bold leading-tight text-[#17211B]">
           USDC en Stellar, listo para pesos
         </h1>
         <p className="mt-2 text-sm leading-5 text-[#66736B]">
@@ -51,11 +61,12 @@ export function OnboardingScreen({ onStart }: { onStart: () => void }) {
         </ul>
         <Button
           className="mt-6 h-12 w-full rounded-[8px] bg-[#6D45B8] text-base font-semibold text-white hover:bg-[#56359A]"
-          onClick={onStart}
+          autoFocus
+          onClick={() => dialogRef.current?.close()}
         >
           Empezar
         </Button>
       </div>
-    </div>
+    </dialog>
   );
 }
