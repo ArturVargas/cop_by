@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ArrowDownLeft, ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { StellarReceipt } from "@/components/stellar-receipt";
+const StellarReceipt = lazy(() => import("@/components/stellar-receipt").then((module) => ({ default: module.StellarReceipt })));
 import type { StellarReceiptData } from "@/components/shareable-receipt";
 import { getRecipientAlias } from "@/lib/saved-recipients";
 import { formatUsdcAmount } from "@/lib/format-usdc";
@@ -111,7 +111,7 @@ export default function ActivityPage() {
       ) : (
         <>
           {address && <p className="mt-4 font-mono text-xs text-wallet-muted" title={address}>{formatShortStellarGAddress(address)}</p>}
-          {receipt ? <div className="mt-5"><StellarReceipt data={receipt} onDone={() => setSelected(null)} doneLabel="Volver a Actividad" /></div> : <>
+          {receipt ? <div className="mt-5"><Suspense fallback={<p className="text-sm text-wallet-muted" role="status">Cargando comprobante…</p>}><StellarReceipt data={receipt} onDone={() => setSelected(null)} doneLabel="Volver a Actividad" /></Suspense></div> : <>
           {error && (
             <div className="mt-5 rounded-[8px] bg-wallet-negative-soft p-4 text-sm text-wallet-negative" role="alert">
               <p>{error}</p>

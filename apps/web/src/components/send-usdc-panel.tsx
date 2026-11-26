@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useId, useMemo, useState } from "react";
+import { lazy, Suspense, FormEvent, useEffect, useId, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { StellarReceipt } from "@/components/stellar-receipt";
+const StellarReceipt = lazy(() => import("@/components/stellar-receipt").then((module) => ({ default: module.StellarReceipt })));
 import type { StellarReceiptData } from "@/components/shareable-receipt";
 import { useStellarWallet } from "@/hooks/use-stellar-wallet";
 import { formatUsdcAmount } from "@/lib/format-usdc";
@@ -222,7 +222,7 @@ export function SendUsdcPanel() {
 
   if (step === "done" && receipt) {
     return (
-      <StellarReceipt
+      <Suspense fallback={<p className="text-sm text-wallet-muted" role="status">Cargando comprobante…</p>}><StellarReceipt
           data={receipt}
           doneLabel="Enviar otro"
           onDone={() => {
@@ -235,7 +235,7 @@ export function SendUsdcPanel() {
             setAmountTouched(false);
             setMemoTouched(false);
           }}
-      />
+      /></Suspense>
     );
   }
 

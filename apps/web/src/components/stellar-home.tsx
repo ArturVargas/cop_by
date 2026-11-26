@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useState } from "react";
 import Link from "next/link";
 import { Check, Copy, History } from "lucide-react";
 
@@ -10,7 +10,7 @@ import {
   HomeTabs,
   type HomeTab,
 } from "@/components/home-tabs";
-import { SendUsdcPanel } from "@/components/send-usdc-panel";
+const SendUsdcPanel = lazy(() => import("@/components/send-usdc-panel").then((module) => ({ default: module.SendUsdcPanel })));
 import { useStellarWallet } from "@/hooks/use-stellar-wallet";
 import { CAVOS_NETWORK } from "@/lib/cavos-config";
 import { formatShortStellarGAddress } from "@/lib/stellar-address";
@@ -310,7 +310,7 @@ export function StellarHome() {
       </HomeTabPanel>
 
       <HomeTabPanel tab="enviar" active={tab} baseId={tabsBaseId}>
-        <SendUsdcPanel key={address} />
+        <Suspense fallback={<p className="text-sm text-wallet-muted" role="status">Cargando formulario de envío…</p>}><SendUsdcPanel key={address} /></Suspense>
       </HomeTabPanel>
 
       <HomeTabPanel tab="gastar" active={tab} baseId={tabsBaseId}>
