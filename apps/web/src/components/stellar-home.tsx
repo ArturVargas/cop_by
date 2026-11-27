@@ -51,6 +51,8 @@ export function StellarHome() {
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<HomeTab>("enviar");
 
+  useEffect(() => { setCopyStatus("idle"); }, [address]);
+
   useEffect(() => {
     if (!hasSeenOnboarding()) setShowOnboarding(true);
     const open = () => setShowOnboarding(true);

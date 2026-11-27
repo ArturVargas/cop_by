@@ -1,8 +1,9 @@
 "use client";
 
-import { useId } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { create } from "qrcode";
-import { Copy } from "lucide-react";
+import { Copy, Share2 } from "lucide-react";
+import { shareStellarAccount } from "@/lib/stellar-account-share";
 import { Button } from "@/components/ui/button";
 import { CAVOS_NETWORK, getStellarUsdc } from "@/lib/cavos-config";
 import { formatShortStellarGAddress } from "@/lib/stellar-address";
@@ -34,6 +35,33 @@ export function StellarReceivePanel({ address, copyStatus, onCopy }: {
   onCopy: () => void;
 }) {
   const usdc = getStellarUsdc();
+  const [sharing, setSharing] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const lastFeedback = useRef("");
+  useEffect(() => {
+    if (!feedback) return;
+    const timer = window.setTimeout(() => setFeedback(""), 3500);
+    return () => window.clearTimeout(timer);
+  }, [feedback]);
+  const report = (message: string) => {
+    const next = lastFeedback.current === message ? `${message}\u00a0` : message;
+    lastFeedback.current = next;
+    setFeedback(next);
+  };
+  const share = async () => {
+    if (sharing) return;
+    setSharing(true);
+    setFeedback("");
+    try {
+      const result = await shareStellarAccount(address, CAVOS_NETWORK);
+      if (result === "shared") report("Cuenta compartida.");
+      if (result === "copied") report("Cuenta copiada. Pégala para compartirla.");
+    } catch {
+      report("No pudimos compartir la cuenta. Usa Copiar cuenta o selecciona la dirección.");
+    } finally {
+      setSharing(false);
+    }
+  };
   return (
     <section className="rounded-[8px] border border-wallet-border bg-wallet-card p-4">
       <h2 className="text-base font-semibold text-wallet-ink">Recibir USDC</h2>
@@ -41,10 +69,15 @@ export function StellarReceivePanel({ address, copyStatus, onCopy }: {
       <div className="mt-4"><StellarAccountQr address={address} /></div>
       <p className="mt-3 text-center text-sm font-semibold text-wallet-ink">Stellar {CAVOS_NETWORK === "testnet" ? "Testnet · Fondos de prueba" : "Mainnet"}</p>
       <p className="mt-4 select-all break-all font-mono text-xs leading-5 text-wallet-ink">{address}</p>
-      <Button type="button" variant="outline" className="mt-3 min-h-11 w-full" onClick={onCopy}>
+      <Button type="button" className="mt-4 min-h-11 w-full bg-wallet-brand text-wallet-on-brand hover:bg-wallet-brand-hover" disabled={sharing} onClick={() => void share()}>
+        <Share2 className="mr-2 h-4 w-4" aria-hidden="true" />
+        {sharing ? "Compartiendo…" : "Compartir cuenta"}
+      </Button>
+      <Button type="button" variant="outline" className="mt-3 min-h-11 w-full" onClick={() => { setFeedback(""); onCopy(); }}>
         <Copy className="mr-2 h-4 w-4" aria-hidden="true" />
         {copyStatus === "ok" ? "Cuenta copiada" : copyStatus === "fail" ? "Reintentar copia" : "Copiar cuenta"}
       </Button>
+      <p className="mt-2 min-h-5 text-sm text-wallet-muted" role="status" aria-live="polite">{feedback}</p>
       <p className="mt-3 text-xs text-wallet-muted">{CAVOS_NETWORK === "testnet" ? "Usa solo USDC de prueba en Stellar Testnet." : "Envía únicamente USDC de la red Stellar a esta cuenta."}</p>
       <p className="mt-1 break-all font-mono text-xs text-wallet-muted" title={usdc.issuer}>{usdc.code}:{formatShortStellarGAddress(usdc.issuer)}</p>
     </section>
