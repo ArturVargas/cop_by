@@ -5,14 +5,15 @@ import type { RampCodec } from "./codec";
 import type { ProviderResolver, QuoteRequest, RampOperation, RampRepository } from "./types";
 
 /** Only this projection leaves the server. Requests, keys and provider identifiers stay private. */
-export function publicOperation(operation: RampOperation) {
+export function publicOperation(operation: RampOperation, now = Date.now()) {
   const q = operation.quote;
+  const canFund = !!q && !!operation.acceptedAt && Date.parse(q.expiresAt) > now && ["awaiting_funding", "funding_reported"].includes(operation.state);
   return { id: operation.id, provider: operation.provider, state: operation.state, network: operation.request.network,
     simulation: operation.provider === "mock", createdAt: operation.createdAt, updatedAt: operation.updatedAt,
     ...(operation.errorCode ? { errorCode: operation.errorCode } : {}),
     ...(operation.receiptId ? { receiptId: operation.receiptId } : {}),
     ...(q ? { quote: { expiresAt: q.expiresAt, sourceAmount: q.sourceAmount, sourceCurrency: "USDC", destinationAmount: q.destinationAmount, destinationCurrency: "BRL", fees: q.fees, recipientName: q.recipientName,
-      ...(operation.acceptedAt ? { funding: q.funding } : {}) } } : {}) };
+      canFund, ...(canFund ? { funding: q.funding } : {}) } } : {}) };
 }
 export class RampService {
   constructor(private readonly repository: RampRepository, private readonly provider: ProviderResolver, private readonly codec: RampCodec, private readonly now: () => number = Date.now) {}

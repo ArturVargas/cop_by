@@ -68,6 +68,7 @@ export class PodsRampProvider implements RampProvider {
       return { kind: text(charge.kind, 80), label: text(charge.label), amount: unitsToAmount(units(charge.amountRaw), currency === "USDC" ? 7 : 2), currency };
     });
     const destinationAmount = unitsToAmount(units(object(q.tokenOut).expectedAmountOut ?? object(q.tokenOut).amount), 2);
+    if (amountToUnits(destinationAmount, 2) <= 0n) return invalid();
     const rawTransactions = body.transactionData;
     const simpleDeposit = rawTransactions === undefined || (Array.isArray(rawTransactions) && rawTransactions.length === 0);
     const destination = body.depositAddress;
@@ -82,11 +83,13 @@ export class PodsRampProvider implements RampProvider {
     if (q.originChain !== "stellar" || q.destinationChain !== "fiat" || source.contract !== token || source.symbol !== "USDC" || source.decimals !== 7 || units(source.amount) !== amountToUnits(request.amount, 7) || destination.symbol !== "BRL" || destination.contract !== "BRL" || destination.decimals !== 2) return invalid();
     if (q.originAddress !== undefined && q.originAddress !== request.sourceAddress) return invalid();
     if (q.thirdParty !== undefined && q.thirdParty !== request.thirdParty) return invalid();
+    if (q.pixKey !== undefined && q.pixKey !== request.pixKey) return invalid();
   }
   async getStatus(request: QuoteRequest, quote: RampQuote): Promise<ProviderObservation> {
     const body = await this.get(`/v2/swap/status/${encodeURIComponent(quote.providerQuoteId)}`);
     if (body.quoteId !== quote.providerQuoteId) return invalid();
     this.validatePair(body, request, text(quote.providerTokenId));
+    if (units(object(body.tokenOut).expectedAmountOut ?? object(body.tokenOut).amount) !== amountToUnits(quote.destinationAmount, 2)) return invalid();
     const states: Record<string, RampState> = { pending: "awaiting_funding", confirmed: "processing", processing: "processing", fulfilled: "paid", expired: "expired", failed: "failed", refunded: "refunded" };
     const state = typeof body.status === "string" ? states[body.status] : undefined;
     const observedAt = Date.parse(text(body.updatedAt));

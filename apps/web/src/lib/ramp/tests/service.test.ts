@@ -30,7 +30,7 @@ test("unknown quote outcome is retained and never automatically requests a secon
 test("acceptance, funding reports and reconciliation preserve ownership and provider authority",async()=>{
   const {service,provider}=setup();const operation=await service.create("alice","funding-key",request);
   await assert.rejects(()=>service.reportFunding("alice",operation.id,"a".repeat(64)),/aceptar/);
-  const accepted=await service.accept("alice",operation.id);assert.equal(accepted.state,"awaiting_funding");assert.equal(publicOperation(accepted).quote!.funding!.kind,"simulation");
+  const accepted=await service.accept("alice",operation.id);assert.equal(accepted.state,"awaiting_funding");assert.equal(publicOperation(accepted,now).quote!.funding!.kind,"simulation");
   await service.reportFunding("alice",operation.id,"a".repeat(64));
   await assert.rejects(()=>service.reportFunding("alice",operation.id,"b".repeat(64)),/registrada/);
   const paid=await service.reconcile("alice",operation.id);assert.equal(paid.state,"paid");
@@ -65,4 +65,10 @@ test("unknown Stellar funding contracts cannot be accepted",async()=>{
   const {service}=setup(async()=>({...quote,funding:{kind:"unavailable",reason:"unverified"}}));
   const operation=await service.create("alice","unsafe-key",request);
   await assert.rejects(()=>service.accept("alice",operation.id),/contrato/);
+});
+test("public funding instructions disappear after expiry or settlement",()=>{
+  const operation={id:"id",customerId:"alice",provider:"pods" as const,idempotencyKey:"key",requestHash:"hash",request,state:"awaiting_funding" as const,version:1,quote,acceptedAt:new Date(now).toISOString(),createdAt:new Date(now).toISOString(),updatedAt:new Date(now).toISOString()};
+  assert.equal(publicOperation(operation,now).quote!.canFund,true);
+  assert.equal(publicOperation(operation,now+300001).quote!.funding,undefined);
+  assert.equal(publicOperation({...operation,state:"paid"},now).quote!.funding,undefined);
 });

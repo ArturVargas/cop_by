@@ -61,3 +61,8 @@ test("provider timeouts and private error payloads stay safe", async () => {
   const failed=new PodsRampProvider({apiKey:"secret",enabled:true,stellarToken:token,fetcher:async()=>new Response(JSON.stringify({error:{code:"RATE_LIMIT",message:"private PIX value"}}),{status:429})});
   await assert.rejects(()=>failed.createQuote(request),(error:unknown)=>error instanceof Error && !error.message.includes("private PIX"));
 });
+test("settlement for a different BRL amount is rejected",async()=>{
+  const quote=await fixture().provider.createQuote(request);const body={...podsResponse().quote,tokenOut:{...podsResponse().quote.tokenOut,amount:"7600"},status:"fulfilled",updatedAt:new Date(now).toISOString(),fiatSettlement:{method:"PIX"}};
+  const provider=new PodsRampProvider({apiKey:"secret",now:()=>now,fetcher:async()=>new Response(JSON.stringify(body))});
+  await assert.rejects(()=>provider.getStatus(request,quote));
+});
