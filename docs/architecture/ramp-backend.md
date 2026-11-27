@@ -1,49 +1,49 @@
 # Modular Stellar → PIX backend
 
-Date: 2026-11-27. Branch: codex/backend-pix-pods.
+Date: 2026-11-27. Branch: codex/backend-pix-pods. Operational details and current resources: ramp-runbook.md.
 
 ## Confirmed scope
-USDC from a Cavos Stellar wallet pays a BRL PIX key. Start with Pods; add TuCOP by implementing the same provider contract when its Stellar rail is enabled. This branch adds server endpoints, persistence and tests. Signing remains on the user's device; the existing UI is outside this slice.
+USDC from a Cavos Stellar wallet pays BRL via PIX. Start with Pods, then implement the same provider contract for TuCOP when Stellar is ready. Signing stays on the user's device. This branch builds private integration APIs and an official sandbox runner; it does not expose them directly to browser users or enable live funds.
 
-## Decisions
-Keep Next.js Route Handlers and Cloudflare deployment, use existing Neon/Postgres driver. A separate service would duplicate auth, deployment and operations without a current need. A direct Pods-only route would couple the app to provider field names; use one small provider interface instead. Store the provider on each operation so changing the default does not reroute existing payments.
+## Architecture
+Next.js Route Handlers on Cloudflare/OpenNext with Cloudflare D1 persistence. D1 replaces the initial unused ramp Postgres implementation to respect the user's all-Cloudflare hosting choice. No remote ramp data needed migration. The legacy Celo APIs keep their separate Neon dependency.
 
-The initial routes are a private server-to-server integration API: Bearer RAMP_INTERNAL_API_TOKEN plus X-Ramp-Customer-Id from a trusted server. This is an administrator integration credential, not customer authentication and never a browser key. A future Cavos session verifier supplies the same customer principal; it must verify wallet ownership server-side. Do not connect these endpoints directly from a browser with the integration token.
+The provider id is stored on each operation, so changing the default cannot reroute in-flight payments. A small provider interface handles quotes, funding instructions, status and webhook verification. TuCOP explicitly reports unavailable. Mock returns simulation-only instructions with no executable destination. Official pBRL sandbox uses a separate test client because its Base Sepolia chain, token, decimals and settlement mechanics differ from Stellar.
 
-## Source of truth and data
-Pods owns quote amounts, expiry, KYC eligibility and payout status. Stellar owns on-chain funding. Postgres owns application idempotency and the operation/audit/inbox records. A reported transaction hash is a claim, not evidence of funding or PIX completion. Webhooks invalidate/queue reconciliation; their action status does not by itself mark PIX paid. The signed wallet operation is not a backend responsibility.
+The private API uses server-only Bearer RAMP_INTERNAL_API_TOKEN and a trusted X-Ramp-Customer-Id. This is an administrator integration principal, not end-user authentication. Customer-facing access still requires verified Cavos identity and wallet ownership. Never put the integration token in a browser.
 
-Amounts are decimal strings, converted with bigint: Stellar USDC has seven ledger decimals and BRL has two. Preserve the exact provider gross amount, fees, quote id and deadline. Require explicit thirdParty on the request and preserve it. Never reuse a quote with another customer, wallet, key or amount.
+## Data and sources of truth
+Pods owns KYC, currency capability, limits, quotes and canonical settlement status. Stellar owns actual funding. D1 owns application idempotency, operation snapshots, audit revisions, KYC ownership associations and webhook inbox. A reported hash or ACTION_UPDATE success is not evidence of payout; query the quote status.
 
-Operation states: quoting, quoted, awaiting_funding, funding_reported, processing, paid, refunded, expired, failed, needs_attention. Stale provider observations cannot downgrade a paid/refunded operation; later provider-confirmed refunds are allowed. Duplicate requests return their original operation; conflicting bodies with the same key fail. Provider/network timeouts never trigger an automatic duplicate quote request.
+Stellar money uses exact string/BigInt amounts with seven ledger decimals; BRL has two. pBRL sandbox uses eighteen decimals and independent bounds. Preserve exact quote amount, fees, expiry and destination. Require explicit thirdParty. Do not adapt another network's bytecode into an invented Stellar operation.
 
-## Persistence and security
-Apply the SQL migration explicitly; no DDL on normal requests. Encrypt each operation snapshot with AES-256-GCM using an operation/customer binding. Store only non-sensitive lookup fields and append-only state events outside that snapshot. Idempotency request fingerprints use a key derived from the encryption key. Use compare-and-set revisions to avoid races. No process-memory storage in production; in-memory repositories are test fixtures only.
+D1 stores encrypted operation snapshots with AES-256-GCM, bound to customer/operation id. HMAC keys derived from the encryption key protect idempotency and identity fingerprints. CAS revisions plus SQLite triggers make snapshot writes and audit appends atomic. Attempt timestamps rotate work queues even when provider queries fail. No runtime DDL or memory fallback.
 
-All API/provider secrets are server variables. Limit request bodies, validate addresses/checksums and bounds, use timeouts and disable caches. Never log provider URLs containing PIX keys, KYC evidence, authorization headers or raw responses. Store authenticated webhook deliveries durably before acknowledging them. Pods documents no automatic delivery retries; polling/reconciliation is required even with webhooks, including expiry events that are not pushed.
+Hosted KYC reserves a unique customer/applicant/wallet binding before POSTing to Pods. CPF/email are not persisted. Store keyed fingerprints, encrypted wallet and unique provider profile id; verify the provider wallet before releasing any verification bearer link. Status/reset/limits look up the profile from the owning principal. Retry the same session request using Pods' CPF idempotency; never silently replace an existing profile/wallet. KYC links remain transient, uncached and unlogged.
 
-## Provider readiness
-Pods live mode is explicitly gated, mainnet only, and requires API credentials, an approved BRL KYC profile bound to the wallet, and the exact Stellar token identifier from Pods. The public marketing names Stellar, but the inspected OpenAPI still describes several wallet/token/execution fields as EVM/Solana. Missing/unsupported funding payloads must produce an explicit unavailable instruction, never a fabricated address or an executable EVM payload.
+## State and event handling
+States: quoting, quoted, awaiting_funding, funding_reported, processing, paid, refunded, expired, failed, needs_attention. Reserve before provider quote creation. Unknown timeout outcomes are retained without automatic duplicate requests. Pending observations cannot reopen funding after processing, and stale observations cannot downgrade paid/refunded states. Later confirmed refunds are allowed.
 
-Pods documents M… muxed Stellar deposits. Preserve and validate the complete M address; never strip it to G or reuse the current G-only P2P helper. Return normalized payment instructions only after accepting a current quote. No /bytecode call for new integrations: the current Ramp guide says the quote response includes execution fields. Do not call the deprecated status update endpoint or invent a Stellar /fulfill hash contract.
+Canonical fulfilled is paid even if the bank receipt has not arrived. Expose receiptPending, retain original/refund PIX ids independently and keep the first observed values. Failure codes remain separate from creation/transport errors.
 
-TuCOP remains explicitly unavailable until its Stellar contract is confirmed. The mock provider is visibly simulation-only and returns no deposit address or executable transaction.
+Signed webhooks are authenticated over raw bytes, replay-bounded and durably deduplicated before acknowledgement. They enqueue canonical status reconciliation. Pods does not automatically retry webhook delivery, so scheduling/polling remains required; this branch does not publish a scheduler.
 
-## Endpoints
-Private: provider capabilities; POST quotes (Idempotency-Key required); GET operation; POST accept; POST report-funding; POST reconcile; POST reconciliation batch. Public only with provider HMAC: Pods webhook inbox. KYC is checked server-side against a supplied Pods kycUserId; KYC capture/identity provisioning UI is a later slice.
+## Readiness boundaries
+- Dedicated D1 staging database and migrations exist. No production Worker deploy or production D1 binding was added.
+- API key accepted a limits query at api.pods.finance; sandbox confirmation route returned404 there. Full authenticated staging scenarios remain unexecuted until Pods enables/provides that environment.
+- Hosted KYC requires account enablement and return URL allowlisting. The current currency-unlock schema is USD-only; hosted BRL readiness is checked through brlaEnabled.
+- Stellar token identifier, KYC wallet support, mainnet funding response and third-party payout support need credentialed validation. Keep live Stellar disabled.
+- BR Code amountOut pricing and abnormal/late funding need an explicit product flow before advertising them.
+- Verified Cavos sessions, production secrets/database, scheduled reconciliation and real-corridor verification remain prerequisites for customer-facing payments.
 
-## Open items before live payments
-- Pods account/KYB/API key and approved BRL KYC; no credentials were present in this app during implementation.
-- Confirm Stellar token identifier, quote funding payload and mainnet availability with Pods using a credentialed fixture.
-- Configure an isolated DATABASE_URL, encryption key and internal API token; apply migration.
-- Wire a verified Cavos customer session/ownership boundary before customer-facing UI access.
-- Schedule the bounded reconciliation endpoint and register webhook URL/secret with Pods support.
-- Obtain a real test of the intended corridor; provider sandbox described publicly is Base Sepolia, not Stellar Testnet.
-
-## Sources inspected
-- https://docs.pods.finance/llms-full.txt
-- https://docs.pods.finance/openapi.yaml
+## Primary sources
+- https://docs.pods.finance/guides/kyc/pods-hosted
+- https://docs.pods.finance/guides/kyc/sandbox
+- https://docs.pods.finance/guides/ramp/overview
 - https://docs.pods.finance/guides/ramp/quotes
 - https://docs.pods.finance/guides/ramp/status
+- https://docs.pods.finance/guides/ramp/sandbox
 - https://docs.pods.finance/guides/webhooks
-- https://www.pods.finance/products/ramp
+- https://docs.pods.finance/openapi.yaml
+- https://developers.cloudflare.com/d1/worker-api/prepared-statements/
+- https://opennext.js.org/cloudflare/bindings
