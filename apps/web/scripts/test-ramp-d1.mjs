@@ -1,0 +1,36 @@
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { mkdtempSync, readFileSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { resolve, join } from "node:path";
+const require=createRequire(import.meta.url),root=resolve(import.meta.dirname,"..");
+const {buildSync}=createRequire(require.resolve("wrangler/package.json"))("esbuild"),{getPlatformProxy}=require("wrangler");
+const directory=mkdtempSync(join(tmpdir(),"copby-ramp-d1-"));symlinkSync(join(root,"node_modules"),join(directory,"node_modules"),"dir");
+const config=join(directory,"wrangler.json");
+writeFileSync(config,JSON.stringify({name:"copby-ramp-d1-test",compatibility_date:"2026-11-25",d1_databases:[{binding:"RAMP_DB",database_name:"copby-ramp-test",database_id:"00000000-0000-0000-0000-000000000001"}]}));
+let proxy;
+try {
+  proxy=await getPlatformProxy({configPath:config,persist:false});const db=proxy.env.RAMP_DB;
+  for(const name of ["0001_ramp.sql","0002_kyc.sql"])for(const sql of readFileSync(join(root,"migrations/d1",name),"utf8").split("-- statement-breakpoint").filter(v=>v.trim())) await db.prepare(sql).run();
+  buildSync({entryPoints:[join(root,"src/lib/ramp/repository.ts"),join(root,"src/lib/ramp/codec.ts"),join(root,"src/lib/ramp/service.ts"),join(root,"src/lib/ramp/providers/mock.ts"),join(root,"src/lib/ramp/kyc-repository.ts")],outdir:directory,outbase:join(root,"src/lib/ramp"),bundle:true,platform:"node",format:"cjs",packages:"external",alias:{"@":join(root,"src")},logLevel:"silent"});
+  const {D1RampRepository}=require(join(directory,"repository.js")),{RampCodec}=require(join(directory,"codec.js")),{RampService}=require(join(directory,"service.js")),{MockRampProvider}=require(join(directory,"providers/mock.js"));
+  const codec=new RampCodec(Buffer.alloc(32,9).toString("base64")),repo=new D1RampRepository(db,codec),provider=new MockRampProvider(),service=new RampService(repo,()=>provider,codec);
+  const request={provider:"mock",network:"testnet",sourceAddress:"GANTUVPE7JSXMMZHEOHWAWBJY5BIKDW2KYYI2ELBWBRC2TL7THMT6Z5I",amount:"15",pixKey:"private'key@example.com",thirdParty:true,kycUserId:"11111111-1111-4111-8111-111111111111"};
+  const operations=await Promise.all(Array.from({length:8},()=>service.create("alice","d1-test-key",request)));assert.equal(new Set(operations.map(v=>v.id)).size,1);
+  const operation=await service.get("alice",operations[0].id);assert.equal(operation.state,"quoted");assert.equal(await repo.get("bob",operation.id),null);
+  const a=await repo.get("alice",operation.id),b=await repo.get("alice",operation.id);a.version++;b.version++;a.state="awaiting_funding";b.state="failed";
+  const saves=await Promise.all([repo.save(a,a.version-1),repo.save(b,b.version-1)]);assert.equal(saves.filter(Boolean).length,1);
+  const encrypted=await db.prepare("SELECT encrypted_data FROM ramp_operations").first();assert.ok(!encrypted.encrypted_data.includes(request.pixKey));
+  const audit=await db.prepare("SELECT COUNT(*) AS total FROM ramp_operation_events").first();assert.equal(audit.total,3);
+  const event={id:"event-1",digest:"a".repeat(64),actionId:operation.quote.providerActionId,relevant:true};await repo.inbox("mock",event);await repo.inbox("mock",event);assert.equal((await repo.pendingEvents(10)).length,1);await assert.rejects(()=>repo.inbox("mock",{...event,digest:"b".repeat(64)}));
+  assert.equal((await repo.byAction("mock",event.actionId)).id,operation.id);await repo.completeEvent("mock",event.id);assert.equal((await repo.pendingEvents(10)).length,0);
+  const second=await service.create("alice","d1-other-key",{...request,pixKey:"other@example.com"});const first=await repo.candidates(1),next=await repo.candidates(1);assert.notEqual(first[0].id,next[0].id);
+  const lookups=[];provider.getStatus=async(_request,quote)=>{lookups.push(quote.providerQuoteId);if(quote.providerQuoteId===operation.quote.providerQuoteId)throw new Error("Provider unavailable");return {state:"processing",observedAt:Date.now()};};
+  await service.reconcileBatch(1);await service.reconcileBatch(1);assert.equal(new Set(lookups).size,2);assert.equal((await repo.get("alice",second.id)).state,"processing");
+  const {D1KycRepository}=require(join(directory,"kyc-repository.js"));const kyc=new D1KycRepository(db);
+  const binding={customerId:"alice",identityHash:"identity-hash",walletHash:"wallet-hash",requestHash:"request-hash",encryptedWallet:codec.encrypt({walletAddress:request.sourceAddress},"alice","pods-kyc-wallet-v1"),providerProfileId:null};
+  await kyc.reserve(binding);await kyc.attach("alice","550e8400-e29b-41d4-a716-446655440000");assert.equal((await kyc.get("alice")).providerProfileId,"550e8400-e29b-41d4-a716-446655440000");assert.equal(await kyc.get("bob"),null);
+  await assert.rejects(()=>kyc.reserve({...binding,customerId:"bob"}));await assert.rejects(()=>kyc.attach("alice","550e8400-e29b-41d4-a716-446655440001"));
+  await kyc.reserve({...binding,customerId:"bob",identityHash:"other-identity",walletHash:"other-wallet"});await assert.rejects(()=>kyc.attach("bob","550e8400-e29b-41d4-a716-446655440000"));
+  console.log("D1 workerd integration passed: encrypted persistence, owner isolation, concurrent idempotency/CAS, atomic audit, webhook dedupe and fair polling under provider failure.");
+} finally {if(proxy)await proxy.dispose();rmSync(directory,{recursive:true,force:true});}

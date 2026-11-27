@@ -3,7 +3,9 @@
   "name": "copby-stellar",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-11-25",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
@@ -15,7 +17,32 @@
     }
   ],
   "routes": [
-    { "pattern": "stellar.copby.money", "custom_domain": true }
+    {
+      "pattern": "stellar.copby.money",
+      "custom_domain": true
+    }
   ],
-  "observability": { "enabled": true }
+  "observability": {
+    "enabled": true
+  },
+  "env": {
+    "staging": {
+      "name": "copby-stellar-staging",
+      "routes": [],
+      "d1_databases": [
+        {
+          "binding": "RAMP_DB",
+          "database_name": "copby-ramp-staging",
+          "database_id": "1d5067ab-4193-4329-8029-8767ad8833c1",
+          "migrations_dir": "migrations/d1"
+        }
+      ],
+      "services": [
+        {
+          "binding": "WORKER_SELF_REFERENCE",
+          "service": "copby-stellar-staging"
+        }
+      ]
+    }
+  }
 }

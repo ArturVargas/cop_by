@@ -6,7 +6,7 @@ import { createRampRuntime, type RampRuntime } from "./runtime";
 import { publicOperation } from "./service";
 
 type Action = "providers" | "quotes" | "get" | "accept" | "funding" | "reconcile" | "batch" | "webhook";
-type Options = { env?: Record<string, string | undefined>; runtime?: () => RampRuntime };
+type Options = { env?: Record<string, string | undefined>; runtime?: () => RampRuntime | Promise<RampRuntime> };
 function authorize(request: Request, env: Record<string, string | undefined>) {
   const token = env.RAMP_INTERNAL_API_TOKEN;
   if (!token || token.length < 32) throw new RampError("RAMP_NOT_CONFIGURED", "Falta configurar la autenticación privada del backend.", 503);
@@ -30,7 +30,7 @@ export async function handleRampRequest(request: Request, action: Action, operat
     if (action !== "webhook") authorize(request, env);
     const customer = action === "webhook" || action === "batch" ? null : validateCustomerId(request.headers.get("x-ramp-customer-id"));
     if (["get", "accept", "funding", "reconcile"].includes(action) && (!operationId || !/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(operationId))) throw new RampError("INVALID_OPERATION_ID", "Identificador de operación no válido.");
-    const runtime = options.runtime ? options.runtime() : createRampRuntime(env);
+    const runtime = await (options.runtime ? options.runtime() : createRampRuntime(env));
     if (action === "providers") return response({ providers: Object.values(runtime.providers).map(provider => provider!.capability()) });
     if (action === "webhook") {
       const raw = await readBytes(request, 65_536);

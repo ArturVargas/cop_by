@@ -32,4 +32,9 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+module.exports = async () => {
+  if (process.env.NODE_ENV === "development") {
+    await require("@opennextjs/cloudflare").initOpenNextCloudflareForDev({ environment: "staging" });
+  }
+  return nextConfig;
+};
