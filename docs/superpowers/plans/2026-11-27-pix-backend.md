@@ -13,3 +13,5 @@ Review focus: duplicate network requests, unknown outcomes after timeouts, cross
 Task 1: domain tests passed (exact amounts, invalid requests, stale/terminal observations); provider contract and explicitly disabled TuCOP/simulation boundaries added.
 
 Tasks 2–4: Pods contract/HMAC/timeout fixtures passed; encrypted snapshots and service race tests passed. Actual migration/repository SQL passed in disposable PostgreSQL 17, including repeated migration, owner scoping, CAS/audit and webhook deduplication. Private API tests pass; no live credentials, migration, scheduler or payout were used.
+
+Independent review found equal-timestamp processing→pending regressions and failed lookups starving later candidates. Fixed with monotonic funding states, a no-reported-hash funding projection and independent attempted_at rotation. Added service regressions plus actual PostgreSQL failing-provider recovery; all 24 ramp tests and PostgreSQL checks passed. Final Cloudflare rebuild and review follow-up pending.

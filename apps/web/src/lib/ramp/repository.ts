@@ -49,9 +49,12 @@ export class PostgresRampRepository implements RampRepository {
   }
   async candidates(limit: number) {
     const rows = await this.sql`
-      SELECT * FROM ramp_operations WHERE provider_quote_id IS NOT NULL AND state <> 'refunded'
-        AND (state NOT IN ('paid','expired','failed') OR created_at > NOW() - INTERVAL '7 days')
-      ORDER BY updated_at ASC LIMIT ${limit}`;
+      WITH selected AS (
+        SELECT id FROM ramp_operations WHERE provider_quote_id IS NOT NULL AND state <> 'refunded'
+          AND (state NOT IN ('paid','expired','failed') OR created_at > NOW() - INTERVAL '7 days')
+        ORDER BY COALESCE(reconcile_attempted_at, updated_at) ASC LIMIT ${limit} FOR UPDATE SKIP LOCKED
+      ) UPDATE ramp_operations AS o SET reconcile_attempted_at = NOW() FROM selected AS s
+        WHERE o.id = s.id RETURNING o.*`;
     return rows.map(row => this.decode(row));
   }
   async inbox(provider: RampProviderId, event: ProviderEvent) {

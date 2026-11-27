@@ -33,6 +33,9 @@ export function applyObservation(current: RampState, previousTime: number, obser
   if (observation.observedAt < previousTime) return current;
   if (current === "refunded") return current;
   if (current === "paid" && observation.state !== "paid" && observation.state !== "refunded") return current;
+  // Once funding is reported/detected, pending must never invite another payment,
+  // even when provider timestamps tie or a newer response regresses temporarily.
+  if (["funding_reported", "processing", "expired", "failed"].includes(current) && observation.state === "awaiting_funding") return current;
   return observation.state;
 }
 export function validateCustomerId(value: string | null): string {

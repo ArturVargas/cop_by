@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createHmac } from "node:crypto";
+import { PodsRampProvider } from "../providers/pods";
 import { handleRampRequest } from "../api";
 import { RampCodec } from "../codec";
 import { RampService } from "../service";
@@ -30,4 +32,18 @@ test("API rejects oversized, malformed, unknown fields and invalid identifiers",
   assert.equal((await handleRampRequest(req(),"get","invalid",options)).status,400);
   assert.equal((await handleRampRequest(req({...request,unexpected:true}),"quotes",undefined,options)).status,400);
   const invalid=req();assert.equal((await handleRampRequest(invalid,"quotes",undefined,options)).status,400);
+});
+
+test("webhooks require the raw-body signature and acknowledge only a durable inbox write",async()=>{
+  const secret="webhook-test-secret",timestamp=String(Math.floor(Date.now()/1000)),id="signed-event-1";
+  const body=JSON.stringify({messageType:"ACTION_UPDATE",data:{id:"action-1",status:"SUCCESS"}});
+  const signature="v1="+createHmac("sha256",secret).update(`${timestamp}.${id}.${body}`).digest("hex");
+  const provider=new PodsRampProvider({webhookSecret:secret});const inbox=new MemoryRepository();
+  const dependencies={env:{},runtime:()=>({service,repository:inbox,providers:{pods:provider},defaultProvider:"pods" as const})};
+  const webhook=(signed=true)=>new Request("https://copby.test/webhooks/pods",{method:"POST",body,headers:{"X-Deframe-Webhook-Id":id,"X-Deframe-Webhook-Timestamp":timestamp,"X-Deframe-Webhook-Signature":signed?signature:"bad"}});
+  assert.equal((await handleRampRequest(webhook(false),"webhook",undefined,dependencies)).status,401);assert.equal(inbox.events.size,0);
+  assert.equal((await handleRampRequest(webhook(),"webhook",undefined,dependencies)).status,202);
+  assert.equal((await handleRampRequest(webhook(),"webhook",undefined,dependencies)).status,202);assert.equal(inbox.events.size,1);
+  inbox.inbox=async()=>{throw new Error("database secret failure");};
+  const failed=await handleRampRequest(webhook(),"webhook",undefined,dependencies);assert.equal(failed.status,500);assert.ok(!(await failed.text()).includes("secret failure"));
 });

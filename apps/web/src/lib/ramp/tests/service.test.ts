@@ -72,3 +72,13 @@ test("public funding instructions disappear after expiry or settlement",()=>{
   assert.equal(publicOperation(operation,now+300001).quote!.funding,undefined);
   assert.equal(publicOperation({...operation,state:"paid"},now).quote!.funding,undefined);
 });
+test("a reported transaction cannot unlock a second funding instruction after pending polling",async()=>{
+  const {service,provider}=setup();const operation=await service.create("alice","once-key",request);await service.accept("alice",operation.id);await service.reportFunding("alice",operation.id,"a".repeat(64));
+  provider.getStatus=async()=>({state:"awaiting_funding",observedAt:now+1});
+  const pending=await service.reconcile("alice",operation.id);assert.equal(publicOperation(pending,now).quote!.canFund,false);assert.equal(publicOperation(pending,now).quote!.funding,undefined);
+});
+test("processing cannot regress to a fundable quote on tied or newer pending responses",async()=>{
+  const {service,provider}=setup();const operation=await service.create("alice","detected-key",request);await service.accept("alice",operation.id);
+  provider.getStatus=async()=>({state:"processing",observedAt:now+1});await service.reconcile("alice",operation.id);
+  for(const timestamp of [now+1,now+2]) {provider.getStatus=async()=>({state:"awaiting_funding",observedAt:timestamp});const result=await service.reconcile("alice",operation.id);assert.equal(result.state,"processing");assert.equal(publicOperation(result,now).quote!.canFund,false);}
+});

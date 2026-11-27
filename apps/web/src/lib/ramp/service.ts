@@ -7,7 +7,7 @@ import type { ProviderResolver, QuoteRequest, RampOperation, RampRepository } fr
 /** Only this projection leaves the server. Requests, keys and provider identifiers stay private. */
 export function publicOperation(operation: RampOperation, now = Date.now()) {
   const q = operation.quote;
-  const canFund = !!q && !!operation.acceptedAt && Date.parse(q.expiresAt) > now && ["awaiting_funding", "funding_reported"].includes(operation.state);
+  const canFund = !!q && !!operation.acceptedAt && !operation.reportedTxHash && Date.parse(q.expiresAt) > now && operation.state === "awaiting_funding";
   return { id: operation.id, provider: operation.provider, state: operation.state, network: operation.request.network,
     simulation: operation.provider === "mock", createdAt: operation.createdAt, updatedAt: operation.updatedAt,
     ...(operation.errorCode ? { errorCode: operation.errorCode } : {}),

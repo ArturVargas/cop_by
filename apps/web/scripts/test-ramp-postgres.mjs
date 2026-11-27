@@ -29,7 +29,7 @@ try {
   psql("DROP TABLE IF EXISTS ramp_webhook_events, ramp_operation_events, ramp_operations CASCADE;");
   const migration=readFileSync(join(appRoot,"migrations/001_ramp.sql"),"utf8");psql(migration);psql(migration);
   const codec=new RampCodec(Buffer.alloc(32,9).toString("base64")),repo=new PostgresRampRepository(sql,codec),provider=new MockRampProvider(),service=new RampService(repo,()=>provider,codec);
-  const request={provider:"mock",network:"testnet",sourceAddress:"GANTUVPE7JSXMMZHEOHWAWBJY5BIKDW2KYYI2NPZZGVE3LBWBRC2TL7THMT6Z5I",amount:"15",pixKey:"private'key@example.com",thirdParty:true,kycUserId:"11111111-1111-4111-8111-111111111111"};
+  const request={provider:"mock",network:"testnet",sourceAddress:"GANTUVPE7JSXMMZHEOHWAWBJY5BIKDW2KYYI2ELBWBRC2TL7THMT6Z5I",amount:"15",pixKey:"private'key@example.com",thirdParty:true,kycUserId:"11111111-1111-4111-8111-111111111111"};
   const operation=await service.create("alice","postgres-key",request);
   assert.equal(operation.state,"quoted");assert.equal((await service.create("alice","postgres-key",request)).id,operation.id);
   assert.equal(await repo.get("bob",operation.id),null);
@@ -42,6 +42,13 @@ try {
   await assert.rejects(()=>repo.inbox("mock",{...event,digest:"b".repeat(64)}));
   assert.equal((await repo.byAction("mock",event.actionId)).id,operation.id);await repo.completeEvent("mock",event.id);assert.equal((await repo.pendingEvents(10)).length,0);
   assert.equal((await repo.candidates(10)).length,1);
-  assert.equal(csv(psql("SELECT COUNT(*) AS total FROM ramp_operation_events;"))[0].total,"3");
+  const second=await service.create("alice","postgres-key-2",{...request,pixKey:"other@example.com"});
+  const firstAttempt=await repo.candidates(1),nextAttempt=await repo.candidates(1);
+  assert.notEqual(firstAttempt[0].id,nextAttempt[0].id);assert.deepEqual(new Set([firstAttempt[0].id,nextAttempt[0].id]),new Set([operation.id,second.id])); // Fair rotation without a successful provider call.
+  assert.equal(csv(psql("SELECT COUNT(*) AS total FROM ramp_operation_events;"))[0].total,"5");
+  const lookups=[];
+  provider.getStatus=async(_request,quote)=>{lookups.push(quote.providerQuoteId);if(quote.providerQuoteId===operation.quote.providerQuoteId)throw new Error("Provider unavailable");return {state:"processing",observedAt:Date.now()};};
+  await service.reconcileBatch(1);await service.reconcileBatch(1);
+  assert.equal(new Set(lookups).size,2);assert.equal((await repo.get("alice",second.id)).state,"processing");
   console.log("PostgreSQL integration passed: repeatable migration, encrypted snapshot, owner isolation, idempotency, CAS/audit and durable webhook deduplication.");
 } finally { rmSync(temporary,{recursive:true,force:true}); }

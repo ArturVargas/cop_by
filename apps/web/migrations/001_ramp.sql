@@ -12,11 +12,12 @@ CREATE TABLE IF NOT EXISTS ramp_operations (
   encrypted_data TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL,
+  reconcile_attempted_at TIMESTAMPTZ,
   UNIQUE (customer_id, idempotency_key),
   UNIQUE (provider, provider_quote_id),
   UNIQUE (provider, provider_action_id)
 );
-CREATE INDEX IF NOT EXISTS ramp_operations_reconcile ON ramp_operations (updated_at) WHERE provider_quote_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ramp_operations_reconcile ON ramp_operations (COALESCE(reconcile_attempted_at, updated_at)) WHERE provider_quote_id IS NOT NULL;
 CREATE TABLE IF NOT EXISTS ramp_operation_events (
   operation_id UUID NOT NULL REFERENCES ramp_operations(id),
   version INTEGER NOT NULL,
