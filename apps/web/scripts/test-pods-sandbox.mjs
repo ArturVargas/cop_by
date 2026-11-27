@@ -12,7 +12,7 @@ const record=(scenario,result)=>{results.push({scenario,...result});console.log(
 function cpf(){let digits=Array.from({length:9},()=>randomInt(10));if(new Set(digits).size===1)digits[0]=(digits[0]+1)%10;for(const length of [9,10]){const sum=digits.reduce((n,d,i)=>n+d*(length+1-i),0);digits.push(((sum*10)%11)%10);}return digits.join("");}
 try {
   buildSync({entryPoints:[join(root,"src/lib/ramp/providers/pods-sandbox.ts")],outfile:join(directory,"sandbox.cjs"),bundle:true,platform:"node",format:"cjs",packages:"external",alias:{"@":join(root,"src")},logLevel:"silent"});
-  const {PodsSandboxClient}=require(join(directory,"sandbox.cjs"));
+  const {PodsSandboxClient,isSandboxKycLink}=require(join(directory,"sandbox.cjs"));
   const baseUrl=process.env.PODS_SANDBOX_API_BASE_URL??(probe?process.env.PODS_API_BASE_URL??"https://api.pods.finance":undefined);
   const sandbox=new PodsSandboxClient({enabled:probe||process.env.PODS_SANDBOX_ENABLED==="true",apiKey:process.env.PODS_API_KEY,baseUrl});
   await sandbox.preflight();record("sandbox_preflight",{status:"available",host:new URL(baseUrl).hostname});
@@ -20,7 +20,7 @@ try {
     const wallet="0x"+randomBytes(20).toString("hex");let applicantNumber=0;
     const identity=()=>({cpf:cpf(),email:`copby-sandbox-${Date.now()}-${++applicantNumber}@example.com`,walletAddress:applicantNumber===1?wallet:"0x"+randomBytes(20).toString("hex")});
     const profile=await sandbox.createKyc(identity()),id=String(profile.kycUserId);
-    assert.match(id,/^[\da-f-]{36}$/i);assert.equal(profile.status,"created");assert.ok(String(profile.verificationLink).includes("sandbox"),"Expected a clearly dummy hosted link");
+    assert.match(id,/^[\da-f-]{36}$/i);assert.equal(profile.status,"created");assert.ok(isSandboxKycLink(profile.verificationLink),"Expected the published reserved .invalid hosted link");
     for(let i=0;i<2;i++)assert.equal((await sandbox.kycStatus(id)).status,"created");
     await sandbox.simulateKyc(id,"provider_pending");assert.equal((await sandbox.kycStatus(id)).status,"provider_pending");
     await sandbox.simulateKyc(id,"approved");const approved=await sandbox.kycStatus(id);assert.equal(approved.status,"approved");assert.equal(approved.brlaEnabled,true);record("hosted_kyc_approved",{status:"passed",kycUserId:id});

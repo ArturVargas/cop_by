@@ -5,6 +5,10 @@ import { PodsClient, type PodsClientConfig, invalidPods, podsObject, podsText } 
 export const PBRL_TOKEN="0x9762f60740142cf11c0f32c6e24cd3e86016c0f2";
 export type SandboxQuote={id:string;direction:"onramp"|"offramp";wallet:string;amountBrl:string;rawInput:string;expiresAt:string|null};
 export type SandboxStatus={quoteId:string;status:string;destinationTxHash?:string;failureCode?:string};
+export function isSandboxKycLink(value:unknown):boolean {
+  if(typeof value!=="string")return false;
+  try {const url=new URL(value);return url.protocol==="https:"&&!url.username&&!url.password&&url.hostname.endsWith(".invalid");}catch{return false;}
+}
 /** Test-only corridor. Never represented as USDC, Stellar Testnet, or a real PIX payout. */
 export class PodsSandboxClient {
   readonly client:PodsClient;
