@@ -7,7 +7,7 @@ export type FundingInstructions =
   | { kind: "simulation" }
   | { kind: "unavailable"; reason: string };
 export type RampFee = { kind: string; label: string; amount: string; currency: "USDC" | "BRL" };
-export type RampQuote = { providerQuoteId: string; providerActionId?: string; expiresAt: string; sourceAmount: string; destinationAmount: string; fees: RampFee[]; recipientName?: string; funding: FundingInstructions };
+export type RampQuote = { providerQuoteId: string; providerActionId?: string; providerTokenId?: string; expiresAt: string; sourceAmount: string; destinationAmount: string; fees: RampFee[]; recipientName?: string; funding: FundingInstructions };
 export type ProviderObservation = { state: RampState; observedAt: number; receiptId?: string };
 export type ProviderEvent = { id: string; digest: string; actionId: string | null; relevant: boolean };
 export type ProviderCapability = { id: RampProviderId; available: boolean; networks: RampNetwork[]; reason?: string };
