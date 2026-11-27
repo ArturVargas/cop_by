@@ -14,7 +14,9 @@
     "test:stellar": "node scripts/test-stellar.mjs",
     "test:receipt-export": "node scripts/test-receipt-export.mjs",
     "test:wallet-state": "node scripts/test-wallet-state.mjs",
-    "test:ramp": "node scripts/test-ramp.mjs"
+    "test:ramp": "node scripts/test-ramp.mjs",
+    "test:ramp:d1": "node scripts/test-ramp-d1.mjs",
+    "test:pods:sandbox": "node --env-file-if-exists=.env scripts/test-pods-sandbox.mjs"
   },
   "dependencies": {
     "@cavos/kit": "^0.6.1",
