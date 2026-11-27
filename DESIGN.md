@@ -64,7 +64,7 @@ Bordes suaves separan superficies. La sombra pequeña se reserva para el onboard
 Controles y superficies con radios de 8px; comprobante de 12px. Cápsulas para cuenta y saldo de cabecera.
 
 ## Components
-Acciones táctiles de al menos 44px; foco visible con contorno de marca. Usar el componente Button existente. Menú Cuenta con estado expandido y cierre por Escape; pestañas con flechas, Home y End. Comprobante exportado con fondo blanco, direcciones y hash completos. Mantener identificable Stellar Testnet y los fondos de prueba.
+Acciones táctiles de al menos 44px; foco visible con contorno de marca. Usar el componente Button existente. Menú Cuenta con estado expandido y cierre por Escape; pestañas con flechas, Home y End. Comprobante exportado con fondo blanco, direcciones y hash completos. Mantener identificable Stellar Testnet y los fondos de prueba. En Recibir, el QR codifica solo la dirección G completa, se genera localmente en blanco y negro y conserva cuatro módulos de margen; compartir añade la red en el texto.
 
 ## Do's and Don'ts
 Usar tokens en las pantallas Stellar. No introducir colores literales para variantes de estados existentes. No confundir errores de consulta con saldo cero ni reservas reclamables con dinero recibido. No prometer pagos a pesos como disponibles mientras Gastar sea informativo.

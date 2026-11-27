@@ -87,3 +87,20 @@ Validation completed:
 No real transfers or authenticated Cavos submissions were performed in this QA.
 The Worker gzip upload was approximately 1.9 MiB. Vendored SDK build warnings
 remain; they did not prevent building, deploying or serving the app.
+
+## Recibir QR and account sharing — 2026-11-27
+
+Application commits: `42c7222` (local QR) and `d79bcd4` (account sharing).
+Worker version: `169814b1-61f2-4445-ba9b-b68de9496af1`.
+
+Recibir now encodes the complete Stellar G address locally as a black/white SVG
+with a four-module quiet zone. Native text sharing includes the network and
+Testnet warning; unsupported sharing copies the address. Cancellation is silent,
+permission failures retain manual copy, and switching accounts replaces the QR.
+
+Validation: 22 unit tests, type-check, frozen lockfile, Cloudflare build and
+independent review passed. Browser fixtures covered native sharing, cancellation,
+permission errors, clipboard fallback/error, account switches and 320/768/1280px.
+macOS Vision decoded both rendered fixture QRs to their exact full addresses.
+The published build ID and QR/share JavaScript hash match the verified release.
+Sharing APIs used fixtures; no messages or funds were sent during QA.
