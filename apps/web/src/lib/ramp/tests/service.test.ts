@@ -82,3 +82,11 @@ test("processing cannot regress to a fundable quote on tied or newer pending res
   provider.getStatus=async()=>({state:"processing",observedAt:now+1});await service.reconcile("alice",operation.id);
   for(const timestamp of [now+1,now+2]) {provider.getStatus=async()=>({state:"awaiting_funding",observedAt:timestamp});const result=await service.reconcile("alice",operation.id);assert.equal(result.state,"processing");assert.equal(publicOperation(result,now).quote!.canFund,false);}
 });
+test("provider settlement keeps first payment/refund receipts and independent failure metadata",async()=>{
+  const {service,provider}=setup();const operation=await service.create("alice","receipt-key",request);
+  provider.getStatus=async()=>({state:"paid",observedAt:now+1});let result=await service.reconcile("alice",operation.id);assert.equal(result.state,"paid");assert.equal(result.receiptId,undefined);
+  provider.getStatus=async()=>({state:"paid",observedAt:now+2,receiptId:"E-original"});await service.reconcile("alice",operation.id);
+  provider.getStatus=async()=>({state:"refunded",observedAt:now+3,receiptId:"E-changed",refundReceiptId:"D-original",failureCode:"PROVIDER_REJECTED"});result=await service.reconcile("alice",operation.id);
+  assert.equal(result.receiptId,"E-original");assert.equal(result.refundReceiptId,"D-original");assert.equal(result.failureCode,"PROVIDER_REJECTED");
+  provider.getStatus=async()=>({state:"refunded",observedAt:now+4,refundReceiptId:"D-changed"});result=await service.reconcile("alice",operation.id);assert.equal(result.refundReceiptId,"D-original");
+});

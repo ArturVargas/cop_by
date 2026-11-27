@@ -8,7 +8,7 @@ export type FundingInstructions =
   | { kind: "unavailable"; reason: string };
 export type RampFee = { kind: string; label: string; amount: string; currency: "USDC" | "BRL" };
 export type RampQuote = { providerQuoteId: string; providerActionId?: string; providerTokenId?: string; expiresAt: string; sourceAmount: string; destinationAmount: string; fees: RampFee[]; recipientName?: string; funding: FundingInstructions };
-export type ProviderObservation = { state: RampState; observedAt: number; receiptId?: string };
+export type ProviderObservation = { state: RampState; observedAt: number; receiptId?: string; refundReceiptId?: string; failureCode?: string };
 export type ProviderEvent = { id: string; digest: string; actionId: string | null; relevant: boolean };
 export type ProviderCapability = { id: RampProviderId; available: boolean; networks: RampNetwork[]; reason?: string };
 export interface RampProvider {
@@ -18,7 +18,7 @@ export interface RampProvider {
   getStatus(request: QuoteRequest, quote: RampQuote): Promise<ProviderObservation>;
   verifyWebhook(raw: Uint8Array, headers: Headers): ProviderEvent;
 }
-export type RampOperation = { id: string; customerId: string; provider: RampProviderId; idempotencyKey: string; requestHash: string; request: QuoteRequest; state: RampState; version: number; quote?: RampQuote; acceptedAt?: string; reportedTxHash?: string; providerObservedAt?: number; receiptId?: string; errorCode?: string; createdAt: string; updatedAt: string };
+export type RampOperation = { id: string; customerId: string; provider: RampProviderId; idempotencyKey: string; requestHash: string; request: QuoteRequest; state: RampState; version: number; quote?: RampQuote; acceptedAt?: string; reportedTxHash?: string; providerObservedAt?: number; receiptId?: string; refundReceiptId?: string; failureCode?: string; errorCode?: string; createdAt: string; updatedAt: string };
 export interface RampRepository {
   reserve(operation: RampOperation): Promise<{ operation: RampOperation; created: boolean }>;
   get(customerId: string, id: string): Promise<RampOperation | null>;

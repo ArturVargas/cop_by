@@ -95,8 +95,9 @@ export class PodsRampProvider implements RampProvider {
     const observedAt = Date.parse(text(body.updatedAt));
     if (!state || !Number.isFinite(observedAt) || observedAt > this.now() + 300000) return invalid();
     const settlement = body.fiatSettlement && typeof body.fiatSettlement === "object" ? body.fiatSettlement as Record<string, unknown> : null;
-    if (state === "paid" && settlement?.method !== "PIX") return invalid();
-    return { state, observedAt, ...(typeof settlement?.endToEndId === "string" ? { receiptId: text(settlement.endToEndId) } : {}) };
+    if (body.fiatSettlement != null && settlement?.method !== "PIX") return invalid();
+    const failure = body.failure && typeof body.failure === "object" ? body.failure as Record<string, unknown> : null;
+    return { state, observedAt, ...(typeof settlement?.endToEndId === "string" ? { receiptId: text(settlement.endToEndId) } : {}), ...(typeof settlement?.refundEndToEndId === "string" ? { refundReceiptId: text(settlement.refundEndToEndId) } : {}), ...(typeof failure?.code === "string" && /^[A-Z0-9_]{1,80}$/.test(failure.code) ? { failureCode: failure.code } : {}) };
   }
   verifyWebhook(raw: Uint8Array, headers: Headers): ProviderEvent {
     if (!this.config.webhookSecret) throw new RampError("WEBHOOK_NOT_CONFIGURED", "Falta configurar la firma de Pods.", 503);

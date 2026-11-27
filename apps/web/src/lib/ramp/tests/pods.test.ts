@@ -52,7 +52,8 @@ test("only canonical PIX fulfillment becomes paid and quote metadata survives co
   let body:Record<string,unknown>={...podsResponse().quote,status:"fulfilled",updatedAt:new Date(now).toISOString(),fiatSettlement:{method:"PIX",endToEndId:"E-test"}};
   const provider=new PodsRampProvider({apiKey:"test-secret",stellarToken:"changed",now:()=>now,fetcher:async()=>new Response(JSON.stringify(body))});
   assert.equal((await provider.getStatus(request,quote)).state,"paid");
-  body={...body,fiatSettlement:undefined};await assert.rejects(()=>provider.getStatus(request,quote));
+  body={...body,fiatSettlement:undefined};assert.equal((await provider.getStatus(request,quote)).state,"paid");
+  body={...body,fiatSettlement:{method:"WIRE"}};await assert.rejects(()=>provider.getStatus(request,quote));
   body={...body,status:"SUCCESS"};await assert.rejects(()=>provider.getStatus(request,quote));
 });
 test("provider timeouts and private error payloads stay safe", async () => {

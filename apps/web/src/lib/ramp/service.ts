@@ -12,6 +12,9 @@ export function publicOperation(operation: RampOperation, now = Date.now()) {
     simulation: operation.provider === "mock", createdAt: operation.createdAt, updatedAt: operation.updatedAt,
     ...(operation.errorCode ? { errorCode: operation.errorCode } : {}),
     ...(operation.receiptId ? { receiptId: operation.receiptId } : {}),
+    ...(operation.refundReceiptId ? { refundReceiptId: operation.refundReceiptId } : {}),
+    ...(operation.failureCode ? { failureCode: operation.failureCode } : {}),
+    receiptPending: operation.state === "paid" && !operation.receiptId,
     ...(q ? { quote: { expiresAt: q.expiresAt, sourceAmount: q.sourceAmount, sourceCurrency: "USDC", destinationAmount: q.destinationAmount, destinationCurrency: "BRL", fees: q.fees, recipientName: q.recipientName,
       canFund, ...(canFund ? { funding: q.funding } : {}) } } : {}) };
 }
@@ -74,7 +77,9 @@ export class RampService {
       const next = applyObservation(operation.state, operation.providerObservedAt ?? 0, observation);
       operation.state = operation.state === "quoted" && next === "awaiting_funding" ? "quoted" : next;
       operation.providerObservedAt = observation.observedAt;
-      if (observation.receiptId) operation.receiptId = observation.receiptId;
+      if (observation.receiptId && !operation.receiptId) operation.receiptId = observation.receiptId;
+      if (observation.refundReceiptId && !operation.refundReceiptId) operation.refundReceiptId = observation.refundReceiptId;
+      if (observation.failureCode) operation.failureCode = observation.failureCode;
       delete operation.errorCode;
     });
   }
