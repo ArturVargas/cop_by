@@ -10,6 +10,7 @@ import {
   HomeTabs,
   type HomeTab,
 } from "@/components/home-tabs";
+const StellarReceivePanel = lazy(() => import("@/components/stellar-receive").then((module) => ({ default: module.StellarReceivePanel })));
 const SendUsdcPanel = lazy(() => import("@/components/send-usdc-panel").then((module) => ({ default: module.SendUsdcPanel })));
 import { formatUsdcAmount } from "@/lib/format-usdc";
 import { useStellarWallet } from "@/hooks/use-stellar-wallet";
@@ -278,30 +279,7 @@ export function StellarHome() {
       <HomeTabs active={tab} onChange={setTab} id={tabsBaseId} />
 
       <HomeTabPanel tab="recibir" active={tab} baseId={tabsBaseId}>
-        <div className="rounded-[8px] border border-wallet-border bg-wallet-card p-4">
-          <p className="text-sm font-semibold text-wallet-ink">Recibir USDC</p>
-          <p className="mt-1 text-sm text-wallet-muted">
-            Comparte tu cuenta para recibir USDC desde otra wallet en Stellar
-            {CAVOS_NETWORK === "testnet" ? " Testnet." : "."}
-          </p>
-          {address && (
-            <div className="mt-4">
-              <p className="break-all font-mono text-xs leading-5 text-wallet-ink">{address}</p>
-              <Button type="button" variant="outline" className="mt-3 h-11 w-full" onClick={() => void copyAddress()}>
-                <Copy className="mr-2 h-4 w-4" aria-hidden="true" />
-                {copyStatus === "ok" ? "Cuenta copiada" : copyStatus === "fail" ? "Reintentar copia" : "Copiar cuenta"}
-              </Button>
-            </div>
-          )}
-          <p className="mt-3 text-xs text-wallet-muted">
-            {CAVOS_NETWORK === "testnet"
-              ? "Usa solo USDC de prueba en Stellar Testnet."
-              : "Envía únicamente USDC de la red Stellar a esta cuenta."}
-          </p>
-          <p className="mt-1 break-all font-mono text-xs text-wallet-muted" title={usdc.issuer}>
-            {usdc.code}:{formatShortStellarGAddress(usdc.issuer)}
-          </p>
-        </div>
+        {address && <Suspense fallback={<p className="text-sm text-wallet-muted" role="status">Cargando tu cuenta para recibir…</p>}><StellarReceivePanel key={address} address={address} copyStatus={copyStatus} onCopy={() => void copyAddress()} /></Suspense>}
       </HomeTabPanel>
 
       <HomeTabPanel tab="enviar" active={tab} baseId={tabsBaseId}>

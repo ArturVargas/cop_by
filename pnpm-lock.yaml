@@ -135,6 +135,9 @@ importers:
       next:
         specifier: 15.5.29
         version: 15.5.29(@babel/core@7.29.13)(@types/node@20.19.43)(react-dom@18.3.1)(react@18.3.1)
+      qrcode:
+        specifier: 1.5.3
+        version: 1.5.3
       react:
         specifier: ^18.2.0
         version: 18.3.1
@@ -154,6 +157,9 @@ importers:
       '@types/node':
         specifier: ^20.8.0
         version: 20.19.43
+      '@types/qrcode':
+        specifier: ^1.5.6
+        version: 1.5.6
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.31
@@ -2065,7 +2071,7 @@ packages:
       chalk: 4.1.2
       debug: 4.4.3(supports-color@8.1.1)
       glob: 14.0.6
-      semver: 7.8.4
+      semver: 7.8.6
       slugify: 1.6.9
       xcode: 4.0.0
       xml2js: 0.6.0
@@ -2681,7 +2687,7 @@ packages:
       debug: 4.4.3(supports-color@8.1.1)
       lodash: 4.18.1
       pony-cause: 2.1.11
-      semver: 7.8.4
+      semver: 7.8.6
       uuid: 9.0.1
     transitivePeerDependencies:
       - supports-color
@@ -2694,7 +2700,7 @@ packages:
       '@ethereumjs/tx': 4.2.0
       '@types/debug': 4.1.13
       debug: 4.4.3(supports-color@8.1.1)
-      semver: 7.8.4
+      semver: 7.8.6
       superstruct: 1.0.4
     transitivePeerDependencies:
       - supports-color
@@ -2711,7 +2717,7 @@ packages:
       '@types/debug': 4.1.13
       debug: 4.4.3(supports-color@8.1.1)
       pony-cause: 2.1.11
-      semver: 7.8.4
+      semver: 7.8.6
       uuid: 9.0.1
     transitivePeerDependencies:
       - supports-color
@@ -2728,7 +2734,7 @@ packages:
       '@types/debug': 4.1.13
       debug: 4.4.3(supports-color@8.1.1)
       pony-cause: 2.1.11
-      semver: 7.8.4
+      semver: 7.8.6
       uuid: 9.0.1
     transitivePeerDependencies:
       - supports-color
@@ -5861,6 +5867,12 @@ packages:
 
   /@types/prop-types@15.7.15:
     resolution: {integrity: sha512-F6bEyamV9jKGAFBEmlQnesRPGOQqS2+Uwi0Em15xenOxHaf2hv6L8YCVn3rPdPJOiJfPiCnLIRyvwVaqMY3MIw==}
+
+  /@types/qrcode@1.5.6:
+    resolution: {integrity: sha512-te7NQcV2BOvdj2b1hCAHzAoMNuj65kNBMz0KBaxM6c3VGBOhU0dURQKOtH8CFNI/dsKkwlv32p26qYQTWoB5bw==}
+    dependencies:
+      '@types/node': 20.19.43
+    dev: true
 
   /@types/qs@6.15.1:
     resolution: {integrity: sha512-GZHUBZR9hckSUhrxmp1nG6NwdpM9fCunJwyThLW1X3AyHgd9IlHb6VANpQQqDr2o/qQp6McZ3y/IA2rVzKzSbw==}
@@ -11647,7 +11659,7 @@ packages:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.4(typescript@5.9.3)(zod@4.4.3)
+      abitype: 1.3.0(typescript@5.9.3)(zod@4.4.3)
       eventemitter3: 5.0.1
       typescript: 5.9.3
     transitivePeerDependencies:
@@ -12755,6 +12767,7 @@ packages:
     resolution: {integrity: sha512-rUCObTnP32Q08R2uuIrt7r9PlEonuTmtuXYcW6s5kjdlj3xbnwe+21yXptAUYcMAABLkYYTtnmzb3w3EDZfueA==}
     engines: {node: '>=10'}
     hasBin: true
+    dev: true
 
   /semver@7.8.6:
     resolution: {integrity: sha512-9lpSSU4Mly3mrtruwLs1eLK6+gzbzqeBFwRNjIjE+9LuDpWdYctrQlQ3ej1Ilgi7gknpsTRnPoLP8DpCHqHIJw==}
