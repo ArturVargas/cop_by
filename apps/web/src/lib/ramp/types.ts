@@ -18,7 +18,7 @@ export interface RampProvider {
   getStatus(request: QuoteRequest, quote: RampQuote): Promise<ProviderObservation>;
   verifyWebhook(raw: Uint8Array, headers: Headers): ProviderEvent;
 }
-export type RampOperation = { id: string; customerId: string; provider: RampProviderId; idempotencyKey: string; requestHash: string; request: QuoteRequest; state: RampState; version: number; quote?: RampQuote; reportedTxHash?: string; providerObservedAt?: number; receiptId?: string; errorCode?: string; createdAt: string; updatedAt: string };
+export type RampOperation = { id: string; customerId: string; provider: RampProviderId; idempotencyKey: string; requestHash: string; request: QuoteRequest; state: RampState; version: number; quote?: RampQuote; acceptedAt?: string; reportedTxHash?: string; providerObservedAt?: number; receiptId?: string; errorCode?: string; createdAt: string; updatedAt: string };
 export interface RampRepository {
   reserve(operation: RampOperation): Promise<{ operation: RampOperation; created: boolean }>;
   get(customerId: string, id: string): Promise<RampOperation | null>;

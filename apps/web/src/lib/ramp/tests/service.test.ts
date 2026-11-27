@@ -1,0 +1,68 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { RampService, publicOperation } from "../service";
+import { RampCodec } from "../codec";
+import { RampError } from "../errors";
+import { MemoryRepository } from "./memory";
+import { now, request } from "./fixtures";
+import type { RampProvider, RampQuote } from "../types";
+
+const key=Buffer.alloc(32,7).toString("base64");
+const quote:RampQuote={providerQuoteId:"quote-1",providerActionId:"action-1",expiresAt:new Date(now+300000).toISOString(),sourceAmount:"15",destinationAmount:"75",fees:[],funding:{kind:"simulation"}};
+function setup(create?:()=>Promise<RampQuote>) {
+  let calls=0;const repository=new MemoryRepository();
+  const provider:RampProvider={id:"pods",capability:()=>({id:"pods",available:true,networks:["mainnet"]}),createQuote:async()=>{calls++;return create?create():quote;},getStatus:async()=>({state:"paid",observedAt:now+1,receiptId:"PIX-receipt"}),verifyWebhook:()=>{throw new Error("unused");}};
+  const service=new RampService(repository,()=>provider,new RampCodec(key),()=>now);
+  return {service,repository,provider,calls:()=>calls};
+}
+test("quote idempotency is durable under concurrent calls and rejects changed inputs",async()=>{
+  const {service,calls}=setup();const results=await Promise.all(Array.from({length:8},()=>service.create("alice","same-key",request)));
+  assert.equal(calls(),1);assert.equal(new Set(results.map(v=>v.id)).size,1);
+  await assert.rejects(()=>service.create("alice","same-key",{...request,amount:"16"}),/misma/);
+  await assert.rejects(()=>service.get("bob",results[0].id),/encontrada/);
+  const done=await service.get("alice",results[0].id);assert.equal(done.state,"quoted");assert.equal(publicOperation(done).quote!.funding,undefined);
+});
+test("unknown quote outcome is retained and never automatically requests a second quote",async()=>{
+  const {service,calls}=setup(async()=>{throw new RampError("PODS_TIMEOUT","timeout",502,true);});
+  const operation=await service.create("alice","timeout-key",request);assert.equal(operation.state,"needs_attention");
+  assert.equal((await service.create("alice","timeout-key",request)).id,operation.id);assert.equal(calls(),1);
+});
+test("acceptance, funding reports and reconciliation preserve ownership and provider authority",async()=>{
+  const {service,provider}=setup();const operation=await service.create("alice","funding-key",request);
+  await assert.rejects(()=>service.reportFunding("alice",operation.id,"a".repeat(64)),/aceptar/);
+  const accepted=await service.accept("alice",operation.id);assert.equal(accepted.state,"awaiting_funding");assert.equal(publicOperation(accepted).quote!.funding!.kind,"simulation");
+  await service.reportFunding("alice",operation.id,"a".repeat(64));
+  await assert.rejects(()=>service.reportFunding("alice",operation.id,"b".repeat(64)),/registrada/);
+  const paid=await service.reconcile("alice",operation.id);assert.equal(paid.state,"paid");
+  provider.getStatus=async()=>({state:"awaiting_funding",observedAt:now+100});
+  assert.equal((await service.reconcile("alice",operation.id)).state,"paid");
+});
+test("expired quotes cannot be accepted; webhook inbox never trusts success payloads",async()=>{
+  const {service,repository,provider}=setup(async()=>({...quote,expiresAt:new Date(now-1).toISOString()}));
+  const expired=await service.create("alice","expired-key",request);await assert.rejects(()=>service.accept("alice",expired.id),/venció/);
+  const other=setup();const op=await other.service.create("alice","webhook-key",request);
+  await other.repository.inbox("pods",{id:"event",digest:"digest",actionId:"action-1",relevant:true});
+  other.provider.getStatus=async()=>({state:"processing",observedAt:now+1});
+  await other.service.reconcileBatch(10);assert.equal((await other.service.get("alice",op.id)).state,"processing");assert.equal((await other.repository.pendingEvents(10)).length,0);
+});
+test("encrypted snapshots bind their customer and operation; fingerprints are stable and keyed",()=>{
+  const codec=new RampCodec(key);const value={pixKey:"private@example.com"};const encrypted=codec.encrypt(value,"alice","id");
+  assert.ok(!encrypted.includes(value.pixKey));assert.deepEqual(codec.decrypt(encrypted,"alice","id"),value);
+  assert.throws(()=>codec.decrypt(encrypted,"bob","id"));assert.throws(()=>codec.decrypt(encrypted,"alice","different"));
+  assert.equal(codec.fingerprint(request),codec.fingerprint({...request}));assert.notEqual(codec.fingerprint(request),new RampCodec(Buffer.alloc(32,8).toString("base64")).fingerprint(request));
+});
+test("concurrent funding reports cannot overwrite another transaction; polling cannot bypass acceptance",async()=>{
+  const {service,provider}=setup();const operation=await service.create("alice","race-key",request);
+  provider.getStatus=async()=>({state:"awaiting_funding",observedAt:now+1});
+  assert.equal((await service.reconcile("alice",operation.id)).state,"quoted");
+  assert.equal(publicOperation(await service.get("alice",operation.id)).quote!.funding,undefined);
+  await service.accept("alice",operation.id);
+  const results=await Promise.allSettled([service.reportFunding("alice",operation.id,"a".repeat(64)),service.reportFunding("alice",operation.id,"b".repeat(64))]);
+  assert.equal(results.filter(v=>v.status==="fulfilled").length,1);
+  assert.equal((await service.get("alice",operation.id)).reportedTxHash,"a".repeat(64));
+});
+test("unknown Stellar funding contracts cannot be accepted",async()=>{
+  const {service}=setup(async()=>({...quote,funding:{kind:"unavailable",reason:"unverified"}}));
+  const operation=await service.create("alice","unsafe-key",request);
+  await assert.rejects(()=>service.accept("alice",operation.id),/contrato/);
+});
