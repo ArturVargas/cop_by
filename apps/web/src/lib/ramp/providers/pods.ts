@@ -2,14 +2,12 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { StrKey } from "@stellar/stellar-sdk";
 import { STELLAR_USDC_MAINNET } from "@/lib/cavos-config";
 import { amountToUnits, unitsToAmount } from "../domain";
-import { readBytes } from "../body";
+import { PodsClient, invalidPods as invalid, podsObject as object, podsText as text } from "./pods-client";
 import { RampError } from "../errors";
+import { normalizeRampLimits } from "../kyc";
 import type { ProviderEvent, ProviderObservation, QuoteRequest, RampFee, RampProvider, RampQuote, RampState } from "../types";
 
 type PodsConfig = { apiKey?: string; baseUrl?: string; enabled?: boolean; stellarToken?: string; webhookSecret?: string; fetcher?: typeof fetch; now?: () => number; timeoutMs?: number };
-function invalid(): never { throw new RampError("PODS_INVALID_RESPONSE", "La respuesta de Pods no coincide con el contrato esperado.", 502); }
-function object(value: unknown): Record<string, unknown> { if (!value || typeof value !== "object" || Array.isArray(value)) return invalid(); return value as Record<string, unknown>; }
-function text(value: unknown, maximum = 256): string { if (typeof value !== "string" || !value || value.length > maximum) return invalid(); return value; }
 function units(value: unknown): bigint {
   const raw = typeof value === "number" && Number.isSafeInteger(value) ? String(value) : value;
   if (typeof raw !== "string" || !/^\d{1,19}$/.test(raw) || BigInt(raw) > 9_223_372_036_854_775_807n) return invalid();
@@ -18,40 +16,22 @@ function units(value: unknown): bigint {
 
 export class PodsRampProvider implements RampProvider {
   readonly id = "pods" as const;
-  private readonly fetcher: typeof fetch;
+  private readonly client: PodsClient;
   private readonly now: () => number;
-  constructor(private readonly config: PodsConfig) { this.fetcher = config.fetcher ?? fetch; this.now = config.now ?? Date.now; }
+  constructor(private readonly config: PodsConfig) { this.client = new PodsClient(config); this.now = config.now ?? Date.now; }
   capability() {
     const available = this.config.enabled === true && !!this.config.apiKey && !!this.config.stellarToken;
     return { id: this.id, available, networks: ["mainnet" as const], ...(available ? {} : { reason: "PODS_STELLAR_NOT_CONFIGURED" }) };
   }
-  private async get(path: string, parameters?: Record<string, string>): Promise<Record<string, unknown>> {
-    if (!this.config.apiKey) throw new RampError("PROVIDER_NOT_CONFIGURED", "Falta configurar Pods en el servidor.", 503);
-    const base = new URL(this.config.baseUrl ?? "https://api.pods.finance");
-    if (base.protocol !== "https:" || base.username || base.password || base.search || base.hash) throw new RampError("INVALID_PROVIDER_CONFIG", "La URL de Pods debe ser HTTPS y no contener credenciales.", 503);
-    const url = new URL(path, base); for (const [key, value] of Object.entries(parameters ?? {})) url.searchParams.set(key, value);
-    const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), this.config.timeoutMs ?? 12000);
-    try {
-      const response = await this.fetcher(url, { method: "GET", headers: { "x-api-key": this.config.apiKey, Accept: "application/json" }, cache: "no-store", signal: controller.signal, redirect: "error" });
-      const raw = await readBytes(response, 1_048_576);
-      let body: Record<string, unknown>; try { body = object(JSON.parse(new TextDecoder().decode(raw))); } catch { return invalid(); }
-      if (!response.ok) {
-        const error = body.error && typeof body.error === "object" ? body.error as Record<string, unknown> : body;
-        const code = typeof error.code === "string" && /^[A-Z0-9_]{1,80}$/.test(error.code) ? error.code : `HTTP_${response.status}`;
-        throw new RampError(`PODS_${code}`, "Pods no pudo completar la solicitud.", response.status === 429 || response.status >= 500 ? 502 : 422, response.status === 429 || response.status >= 500);
-      }
-      return body;
-    } catch (error) {
-      if (error instanceof RampError) throw error;
-      throw new RampError(controller.signal.aborted ? "PODS_TIMEOUT" : "PODS_UNAVAILABLE", "No pudimos consultar Pods. Reintenta la consulta de estado.", 502, true);
-    } finally { clearTimeout(timer); }
-  }
+  private get(path: string, parameters?: Record<string,string>) { return this.client.request(path, {parameters}); }
   async createQuote(request: QuoteRequest): Promise<RampQuote> {
     if (!this.capability().available) throw new RampError("PROVIDER_NOT_CONFIGURED", "Pods Stellar requiere habilitación y credenciales del servidor.", 503);
     if (request.network !== "mainnet") throw new RampError("UNSUPPORTED_NETWORK", "La ruta real de Pods no admite Stellar Testnet.", 422);
     const kyc = await this.get("/api/v1/kyc/status", { kycUserId: request.kycUserId });
     const wallets = [kyc.walletAddress, ...(Array.isArray(kyc.walletAddresses) ? kyc.walletAddresses : [])];
     if (kyc.kycUserId !== request.kycUserId || kyc.status !== "approved" || kyc.brlaEnabled !== true || !wallets.includes(request.sourceAddress)) throw new RampError("KYC_REQUIRED", "Se requiere KYC aprobado para BRL y vinculado a esta cuenta Stellar.", 422);
+    const limits=normalizeRampLimits(await this.get("/api/v1/limits",{currency:"BRL",originAddress:request.sourceAddress}));
+    if(limits.blocked || BigInt(limits.offramp.remaining.replace(".",""))===0n || BigInt(limits.offramp.remainingGlobalUsd.replace(".",""))===0n) throw new RampError("RAMP_LIMIT_BLOCKED","La cuenta no tiene límite disponible para retirar.",422);
     const body = await this.get("/v2/swap/quote", { originChain: "stellar", destinationChain: "fiat", tokenIn: this.config.stellarToken!, tokenOut: "BRL", amountIn: amountToUnits(request.amount, 7).toString(), originAddress: request.sourceAddress, pixKey: request.pixKey, thirdParty: String(request.thirdParty) });
     const q = object(body.quote); this.validatePair(q, request, this.config.stellarToken!);
     const providerQuoteId = text(q.quoteId);

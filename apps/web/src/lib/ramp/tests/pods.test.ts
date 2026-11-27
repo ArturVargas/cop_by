@@ -9,7 +9,7 @@ function fixture(change?: (value: ReturnType<typeof podsResponse>) => unknown) {
   const fetcher: typeof fetch = async (input, init) => {
     const url = new URL(String(input)); calls.push(url);
     assert.equal(new Headers(init?.headers).get("x-api-key"), "test-secret");
-    const body = url.pathname.includes("/kyc/") ? { kycUserId: request.kycUserId, status: "approved", brlaEnabled: true, walletAddress: address } : (change ? change(podsResponse()) : podsResponse());
+    const body = url.pathname.includes("/kyc/") ? { kycUserId: request.kycUserId, status: "approved", brlaEnabled: true, walletAddress: address } : url.pathname.includes("/limits") ? {provider:"avenia",currency:"BRL",blocked:false,offramp:{remaining:"10000",remainingGlobalUsd:"10000"}} : (change ? change(podsResponse()) : podsResponse());
     return new Response(JSON.stringify(body), { status: 200 });
   };
   const provider = new PodsRampProvider({ apiKey: "test-secret", enabled: true, stellarToken: token, fetcher, now: () => now });
@@ -17,8 +17,8 @@ function fixture(change?: (value: ReturnType<typeof podsResponse>) => unknown) {
 }
 test("Pods uses approved wallet KYC and the exact seven-decimal PIX quote contract", async () => {
   const { provider, calls } = fixture(); const quote = await provider.createQuote(request);
-  assert.equal(calls.length, 2); assert.equal(calls[1].pathname, "/v2/swap/quote");
-  for (const [key,value] of Object.entries({ originChain:"stellar", destinationChain:"fiat", tokenIn:token, tokenOut:"BRL", amountIn:"150000000", originAddress:address, pixKey:request.pixKey, thirdParty:"true" })) assert.equal(calls[1].searchParams.get(key), value);
+  assert.equal(calls.length, 3); assert.equal(calls[2].pathname, "/v2/swap/quote");
+  for (const [key,value] of Object.entries({ originChain:"stellar", destinationChain:"fiat", tokenIn:token, tokenOut:"BRL", amountIn:"150000000", originAddress:address, pixKey:request.pixKey, thirdParty:"true" })) assert.equal(calls[2].searchParams.get(key), value);
   assert.equal(quote.destinationAmount, "75"); assert.equal(quote.fees[0].amount,"0.2");
   assert.equal(quote.funding.kind,"stellar_payment"); if(quote.funding.kind==="stellar_payment") assert.equal(quote.funding.destination,muxed);
 });
@@ -66,4 +66,8 @@ test("settlement for a different BRL amount is rejected",async()=>{
   const quote=await fixture().provider.createQuote(request);const body={...podsResponse().quote,tokenOut:{...podsResponse().quote.tokenOut,amount:"7600",expectedAmountOut:"7600"},status:"fulfilled",updatedAt:new Date(now).toISOString(),fiatSettlement:{method:"PIX"}};
   const provider=new PodsRampProvider({apiKey:"secret",now:()=>now,fetcher:async()=>new Response(JSON.stringify(body))});
   await assert.rejects(()=>provider.getStatus(request,quote));
+});
+test("blocked limits stop before a quote and deprecated aliases cannot bypass them",async()=>{
+ let quotes=0;const provider=new PodsRampProvider({apiKey:"fake-key",enabled:true,stellarToken:token,fetcher:async(input)=>{const path=new URL(String(input)).pathname;if(path.includes("/kyc/"))return Response.json({kycUserId:request.kycUserId,status:"approved",brlaEnabled:true,walletAddress:address});if(path.includes("/limits"))return Response.json({provider:"avenia",currency:"BRL",blocked:true,remaining:"1000000",offramp:{remaining:"0",remainingGlobalUsd:"0"}});quotes++;return Response.json(podsResponse());}});
+ await assert.rejects(()=>provider.createQuote(request));assert.equal(quotes,0);
 });

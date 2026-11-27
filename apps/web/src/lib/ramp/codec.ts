@@ -15,6 +15,9 @@ export class RampCodec {
     const canonical = [request.provider, request.network, request.sourceAddress, request.amount, request.pixKey, request.thirdParty, request.kycUserId];
     return createHmac("sha256", this.fingerprintKey).update(JSON.stringify(canonical)).digest("hex");
   }
+  fingerprintParts(domain: string, parts: unknown[]): string {
+    return createHmac("sha256", this.fingerprintKey).update(JSON.stringify([domain, ...parts])).digest("hex");
+  }
   encrypt(value: unknown, customer: string, id: string): string {
     const iv = randomBytes(12), cipher = createCipheriv("aes-256-gcm", this.key, iv);
     cipher.setAAD(Buffer.from(JSON.stringify(["ramp-v1", customer, id])));

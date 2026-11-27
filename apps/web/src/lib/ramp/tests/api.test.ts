@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createHmac } from "node:crypto";
 import { PodsRampProvider } from "../providers/pods";
+import { PodsClient } from "../providers/pods-client";
+import { PodsKycService } from "../kyc";
+import { MemoryKyc } from "./memory-kyc";
 import { handleRampRequest } from "../api";
 import { RampCodec } from "../codec";
 import { RampService } from "../service";
@@ -46,4 +49,14 @@ test("webhooks require the raw-body signature and acknowledge only a durable inb
   assert.equal((await handleRampRequest(webhook(),"webhook",undefined,dependencies)).status,202);assert.equal(inbox.events.size,1);
   inbox.inbox=async()=>{throw new Error("database secret failure");};
   const failed=await handleRampRequest(webhook(),"webhook",undefined,dependencies);assert.equal(failed.status,500);assert.ok(!(await failed.text()).includes("secret failure"));
+});
+
+test("hosted KYC routes authenticate and scope profile/status/limits to the trusted customer",async()=>{
+ const kyc=new PodsKycService(new MemoryKyc(),new PodsClient({apiKey:"fake",fetcher:async(input)=>{const url=new URL(String(input));if(url.pathname.endsWith("/sessions"))return Response.json({kycUserId:"550e8400-e29b-41d4-a716-446655440000",status:"created",verificationLink:"https://in.sumsub.com/demo",verificationLinkExpiresAt:new Date(Date.now()+600000).toISOString()});return Response.json({kycUserId:"550e8400-e29b-41d4-a716-446655440000",status:"approved",brlaEnabled:true,walletAddress:"0x0000000000000000000000000000000000000001"});}}),new RampCodec(Buffer.alloc(32,7).toString("base64")),{enabled:true});
+ const deps={env,runtime:()=>({...options.runtime(),kyc})};
+ const body={cpf:"52998224725",email:"test@example.com",walletAddress:"0x0000000000000000000000000000000000000001"};
+ const created=await handleRampRequest(req(body),"kyc_session",undefined,deps);assert.equal(created.status,201);const text=await created.text();assert.ok(text.includes("verificationLink"));assert.ok(!text.includes(body.cpf));
+ assert.equal((await handleRampRequest(req(undefined,"bob"),"kyc_status",undefined,deps)).status,404);
+ const own=await handleRampRequest(req(),"kyc_status",undefined,deps);assert.equal((await own.json()).brlaEnabled,true);
+ assert.equal((await handleRampRequest(new Request("https://copby.test"),"kyc_status",undefined,deps)).status,401);
 });

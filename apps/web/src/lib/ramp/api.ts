@@ -4,8 +4,9 @@ import { parseQuoteRequest, validateCustomerId, validateIdempotencyKey } from ".
 import { asRampError, RampError } from "./errors";
 import { createRampRuntime, type RampRuntime } from "./runtime";
 import { publicOperation } from "./service";
+import { parseKycApplicant } from "./kyc";
 
-type Action = "providers" | "quotes" | "get" | "accept" | "funding" | "reconcile" | "batch" | "webhook";
+type Action = "providers" | "quotes" | "get" | "accept" | "funding" | "reconcile" | "batch" | "webhook" | "kyc_session" | "kyc_status" | "kyc_reset" | "limits";
 type Options = { env?: Record<string, string | undefined>; runtime?: () => RampRuntime | Promise<RampRuntime> };
 function authorize(request: Request, env: Record<string, string | undefined>) {
   const token = env.RAMP_INTERNAL_API_TOKEN;
@@ -31,6 +32,13 @@ export async function handleRampRequest(request: Request, action: Action, operat
     const customer = action === "webhook" || action === "batch" ? null : validateCustomerId(request.headers.get("x-ramp-customer-id"));
     if (["get", "accept", "funding", "reconcile"].includes(action) && (!operationId || !/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(operationId))) throw new RampError("INVALID_OPERATION_ID", "Identificador de operación no válido.");
     const runtime = await (options.runtime ? options.runtime() : createRampRuntime(env));
+    if (["kyc_session", "kyc_status", "kyc_reset", "limits"].includes(action)) {
+      if (!runtime.kyc) throw new RampError("KYC_NOT_CONFIGURED", "KYC hosted no está configurado.", 503);
+      if (action === "kyc_session") return response(await runtime.kyc.session(customer!,parseKycApplicant(await json(request))),201);
+      if (action === "kyc_status") return response(await runtime.kyc.status(customer!));
+      if (action === "kyc_reset") return response(await runtime.kyc.reset(customer!));
+      return response(await runtime.kyc.limits(customer!));
+    }
     if (action === "providers") return response({ providers: Object.values(runtime.providers).map(provider => provider!.capability()) });
     if (action === "webhook") {
       const raw = await readBytes(request, 65_536);
@@ -48,6 +56,7 @@ export async function handleRampRequest(request: Request, action: Action, operat
     if (action === "quotes") {
       const key = validateIdempotencyKey(request.headers.get("idempotency-key"));
       const input = parseQuoteRequest(await json(request), runtime.defaultProvider);
+      if (input.provider === "pods" && runtime.kyc) await runtime.kyc.assertApproved(customer!,input.kycUserId,input.sourceAddress);
       return response(publicOperation(await runtime.service.create(customer!, key, input)), 201);
     }
     if (action === "get") return response(publicOperation(await runtime.service.get(customer!, operationId!)));

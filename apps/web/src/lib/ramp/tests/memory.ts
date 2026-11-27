@@ -1,6 +1,6 @@
 import type { ProviderEvent, RampOperation, RampProviderId, RampRepository } from "../types";
 
-/** Test double only; production always requires Postgres. */
+/** Test double only; production always requires D1. */
 export class MemoryRepository implements RampRepository {
   operations = new Map<string, RampOperation>();
   events = new Map<string, { provider: RampProviderId; event: ProviderEvent; done: boolean }>();
