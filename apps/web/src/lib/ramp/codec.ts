@@ -12,7 +12,7 @@ export class RampCodec {
     this.fingerprintKey = Buffer.from(hkdfSync("sha256", this.key, Buffer.alloc(0), "copby-ramp-idempotency-v1", 32));
   }
   fingerprint(request: QuoteRequest): string {
-    const canonical = [request.provider, request.network, request.sourceAddress, request.amount, request.pixKey, request.thirdParty, request.kycUserId];
+    const canonical = request.provider === "tucop" ? [request.provider,request.network,request.sourceAddress,request.amount,request.currency,request.destinationId,request.returnMemo] : [request.provider, request.network, request.sourceAddress, request.amount, request.pixKey, request.thirdParty, request.kycUserId];
     return createHmac("sha256", this.fingerprintKey).update(JSON.stringify(canonical)).digest("hex");
   }
   fingerprintParts(domain: string, parts: unknown[]): string {

@@ -90,3 +90,34 @@ test("provider settlement keeps first payment/refund receipts and independent fa
   assert.equal(result.receiptId,"E-original");assert.equal(result.refundReceiptId,"D-original");assert.equal(result.failureCode,"PROVIDER_REJECTED");
   provider.getStatus=async()=>({state:"refunded",observedAt:now+4,refundReceiptId:"D-changed"});result=await service.reconcile("alice",operation.id);assert.equal(result.refundReceiptId,"D-original");
 });
+test("payment creation is a separate idempotent acceptance phase and stale amounts refresh",async()=>{
+ const {service,provider}=setup(async()=>({...quote,funding:{kind:"unavailable",reason:"ACCEPT_TO_PREPARE"}}));let preparations=0;const keys:string[]=[];
+ provider.prepareFunding=async(_request,q,context)=>{preparations++;keys.push(context.idempotencyKey);return {...q,providerPaymentId:"op-id",funding:{kind:"simulation"}};};
+ provider.getStatus=async()=>({state:"awaiting_funding",observedAt:now+1});
+ const op=await service.create("alice","prepare-key",request);assert.equal(preparations,0);
+ const results=await Promise.all([service.accept("alice",op.id),service.accept("alice",op.id)]);assert.equal(new Set(keys).size,1);assert.ok(results.every(v=>v.quote!.providerPaymentId==="op-id"));
+ provider.getStatus=async()=>({state:"awaiting_funding",observedAt:now+10,sourceAmount:"16",totalAmount:"16",funding:{kind:"simulation"}});
+ assert.equal((await service.getForClient("alice",op.id)).quote!.sourceAmount,"16");
+});
+test("unknown acceptance outcomes recover using the same provider key even after quote expiry",async()=>{
+ let time=now;const repository=new MemoryRepository();let attempts=0;const keys:string[]=[];
+ const provider:RampProvider={id:"pods",capability:()=>({id:"pods",available:true,networks:["mainnet"]}),createQuote:async()=>quote,prepareFunding:async(_r,q,ctx)=>{keys.push(ctx.idempotencyKey);if(++attempts===1)throw new RampError("TUCOP_TIMEOUT","timeout",502,true);return {...q,providerPaymentId:"op-id",expiresAt:new Date(time+600000).toISOString(),funding:{kind:"simulation"}};},getStatus:async()=>({state:"awaiting_funding",observedAt:time}),verifyWebhook:()=>{throw new Error("unused");}};
+ const service=new RampService(repository,()=>provider,new RampCodec(key),()=>time),op=await service.create("alice","retry-payment-key",request);
+ await assert.rejects(()=>service.accept("alice",op.id));assert.equal((await service.get("alice",op.id)).acceptancePending,true);time+=600000;
+ assert.equal((await service.accept("alice",op.id)).state,"awaiting_funding");assert.equal(new Set(keys).size,1);
+});
+
+test("unaccepted preparation quotes expire without creating a payment",async()=>{
+ const {service,provider}=setup(async()=>({...quote,expiresAt:new Date(now-1).toISOString()}));let preparations=0;
+ provider.prepareFunding=async(_r,q)=>{preparations++;return q;};
+ const op=await service.create("alice","unused-quote-key",request);
+ assert.equal((await service.getForClient("alice",op.id)).state,"expired");
+ await assert.rejects(()=>service.accept("alice",op.id));assert.equal(preparations,0);
+});
+test("unknown payment outcomes stop retrying before provider idempotency retention ends",async()=>{
+ let time=now;let attempts=0;const repository=new MemoryRepository();
+ const provider:RampProvider={id:"pods",capability:()=>({id:"pods",available:true,networks:["mainnet"]}),createQuote:async()=>quote,prepareFunding:async()=>{attempts++;throw new RampError("TUCOP_TIMEOUT","timeout",502,true);},getStatus:async()=>({state:"awaiting_funding",observedAt:time}),verifyWebhook:()=>{throw new Error("unused");}};
+ const service=new RampService(repository,()=>provider,new RampCodec(key),()=>time),op=await service.create("alice","retention-key",request);
+ await assert.rejects(()=>service.accept("alice",op.id));time+=23*60*60*1000+1;
+ await assert.rejects(()=>service.accept("alice",op.id),(e:unknown)=>e instanceof RampError&&e.code==="ACCEPTANCE_REVIEW_REQUIRED");assert.equal(attempts,1);
+});

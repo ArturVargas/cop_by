@@ -5,7 +5,7 @@ import { amountToUnits, unitsToAmount } from "../domain";
 import { PodsClient, invalidPods as invalid, podsObject as object, podsText as text } from "./pods-client";
 import { RampError } from "../errors";
 import { normalizeRampLimits } from "../kyc";
-import type { ProviderEvent, ProviderObservation, QuoteRequest, RampFee, RampProvider, RampQuote, RampState } from "../types";
+import type { ProviderEvent, ProviderObservation, QuoteRequest, PodsQuoteRequest, RampFee, RampProvider, RampQuote, RampState } from "../types";
 
 type PodsConfig = { apiKey?: string; baseUrl?: string; enabled?: boolean; stellarToken?: string; webhookSecret?: string; fetcher?: typeof fetch; now?: () => number; timeoutMs?: number };
 function units(value: unknown): bigint {
@@ -25,6 +25,7 @@ export class PodsRampProvider implements RampProvider {
   }
   private get(path: string, parameters?: Record<string,string>) { return this.client.request(path, {parameters}); }
   async createQuote(request: QuoteRequest): Promise<RampQuote> {
+    if(request.provider==="tucop") throw new RampError("INVALID_PROVIDER","La solicitud no corresponde a Pods.");
     if (!this.capability().available) throw new RampError("PROVIDER_NOT_CONFIGURED", "Pods Stellar requiere habilitación y credenciales del servidor.", 503);
     if (request.network !== "mainnet") throw new RampError("UNSUPPORTED_NETWORK", "La ruta real de Pods no admite Stellar Testnet.", 422);
     const kyc = await this.get("/api/v1/kyc/status", { kycUserId: request.kycUserId });
@@ -58,7 +59,7 @@ export class PodsRampProvider implements RampProvider {
     const recipient = q.pixRecipient && typeof q.pixRecipient === "object" ? q.pixRecipient as Record<string, unknown> : null;
     return { providerQuoteId, providerTokenId: this.config.stellarToken, ...(body.id !== undefined ? { providerActionId: text(body.id) } : {}), expiresAt: new Date(expiry).toISOString(), sourceAmount: request.amount, destinationAmount, fees, ...(typeof recipient?.name === "string" ? { recipientName: text(recipient.name) } : {}), funding };
   }
-  private validatePair(q: Record<string, unknown>, request: QuoteRequest, token: string) {
+  private validatePair(q: Record<string, unknown>, request: PodsQuoteRequest, token: string) {
     const source = object(q.tokenIn), destination = object(q.tokenOut);
     if (q.originChain !== "stellar" || q.destinationChain !== "fiat" || source.contract !== token || source.symbol !== "USDC" || source.decimals !== 7 || units(source.amount) !== amountToUnits(request.amount, 7) || destination.symbol !== "BRL" || destination.contract !== "BRL" || destination.decimals !== 2) return invalid();
     if (q.originAddress !== undefined && q.originAddress !== request.sourceAddress) return invalid();
@@ -66,6 +67,7 @@ export class PodsRampProvider implements RampProvider {
     if (q.pixKey !== undefined && q.pixKey !== request.pixKey) return invalid();
   }
   async getStatus(request: QuoteRequest, quote: RampQuote): Promise<ProviderObservation> {
+    if(request.provider==="tucop") throw new RampError("INVALID_PROVIDER","La solicitud no corresponde a Pods.");
     const body = await this.get(`/v2/swap/status/${encodeURIComponent(quote.providerQuoteId)}`);
     if (body.quoteId !== quote.providerQuoteId) return invalid();
     this.validatePair(body, request, text(quote.providerTokenId));

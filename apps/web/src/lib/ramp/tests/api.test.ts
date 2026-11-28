@@ -60,3 +60,14 @@ test("hosted KYC routes authenticate and scope profile/status/limits to the trus
  const own=await handleRampRequest(req(),"kyc_status",undefined,deps);assert.equal((await own.json()).brlaEnabled,true);
  assert.equal((await handleRampRequest(new Request("https://copby.test"),"kyc_status",undefined,deps)).status,401);
 });
+test("TuCOP pay API keeps owned destinations and payments separate from Pods KYC",async()=>{
+ const {tucopFixture}=await import("./tucop-fixtures");const clock=Date.now(),f=await tucopFixture(clock);const paymentRepository=new MemoryRepository(),payments=new RampService(paymentRepository,()=>f.provider,f.codec,()=>clock);
+ const deps={env,runtime:()=>({service:payments,repository:paymentRepository,providers:{tucop:f.provider},defaultProvider:"tucop" as const,tucop:{client:f.client,destinations:f.destinations}})};
+ const view=f.destinations.view(f.registered);
+ assert.equal((await handleRampRequest(req(undefined,"bob"),"tucop_destination_get",view.id,deps)).status,404);
+ assert.equal((await handleRampRequest(req({holderRevision:"0".repeat(64)}),"tucop_destination_confirm",view.id,deps)).status,409);
+ const confirmed=await handleRampRequest(req({holderRevision:view.holderRevision}),"tucop_destination_confirm",view.id,deps);assert.equal(confirmed.status,200);assert.equal((await confirmed.json()).confirmed,true);
+ const created=await handleRampRequest(req(f.request),"quotes",undefined,deps);assert.equal(created.status,201);const op=await created.json();assert.equal(op.state,"quoted");assert.equal(op.quote.destinationCurrency,"BRL");assert.equal(op.quote.funding,undefined);
+ const accepted=await handleRampRequest(req(),"accept",op.id,deps);assert.equal(accepted.status,200);const result=await accepted.json();assert.equal(result.quote.funding.memo,"123456789");assert.equal(result.quote.sourceAmount,"5");assert.equal(f.creations(),1);
+ f.setAmount("5.02");const replay=await handleRampRequest(req(f.request),"quotes",undefined,deps);assert.equal(replay.status,201);assert.equal((await replay.json()).quote.funding.amount,"5.02");
+});

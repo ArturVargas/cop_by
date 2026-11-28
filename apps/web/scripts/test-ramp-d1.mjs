@@ -11,8 +11,8 @@ writeFileSync(config,JSON.stringify({name:"copby-ramp-d1-test",compatibility_dat
 let proxy;
 try {
   proxy=await getPlatformProxy({configPath:config,persist:false});const db=proxy.env.RAMP_DB;
-  for(const name of ["0001_ramp.sql","0002_kyc.sql"])for(const sql of readFileSync(join(root,"migrations/d1",name),"utf8").split("-- statement-breakpoint").filter(v=>v.trim())) await db.prepare(sql).run();
-  buildSync({entryPoints:[join(root,"src/lib/ramp/repository.ts"),join(root,"src/lib/ramp/codec.ts"),join(root,"src/lib/ramp/service.ts"),join(root,"src/lib/ramp/providers/mock.ts"),join(root,"src/lib/ramp/kyc-repository.ts")],outdir:directory,outbase:join(root,"src/lib/ramp"),bundle:true,platform:"node",format:"cjs",packages:"external",alias:{"@":join(root,"src")},logLevel:"silent"});
+  for(const name of ["0001_ramp.sql","0002_kyc.sql","0003_tucop_destinations.sql"])for(const sql of readFileSync(join(root,"migrations/d1",name),"utf8").split("-- statement-breakpoint").filter(v=>v.trim())) await db.prepare(sql).run();
+  buildSync({entryPoints:[join(root,"src/lib/ramp/repository.ts"),join(root,"src/lib/ramp/codec.ts"),join(root,"src/lib/ramp/service.ts"),join(root,"src/lib/ramp/providers/mock.ts"),join(root,"src/lib/ramp/kyc-repository.ts"),join(root,"src/lib/ramp/tucop/destination-store.ts")],outdir:directory,outbase:join(root,"src/lib/ramp"),bundle:true,platform:"node",format:"cjs",packages:"external",alias:{"@":join(root,"src")},logLevel:"silent"});
   const {D1RampRepository}=require(join(directory,"repository.js")),{RampCodec}=require(join(directory,"codec.js")),{RampService}=require(join(directory,"service.js")),{MockRampProvider}=require(join(directory,"providers/mock.js"));
   const codec=new RampCodec(Buffer.alloc(32,9).toString("base64")),repo=new D1RampRepository(db,codec),provider=new MockRampProvider(),service=new RampService(repo,()=>provider,codec);
   const request={provider:"mock",network:"testnet",sourceAddress:"GANTUVPE7JSXMMZHEOHWAWBJY5BIKDW2KYYI2ELBWBRC2TL7THMT6Z5I",amount:"15",pixKey:"private'key@example.com",thirdParty:true,kycUserId:"11111111-1111-4111-8111-111111111111"};
@@ -32,5 +32,10 @@ try {
   await kyc.reserve(binding);await kyc.attach("alice","550e8400-e29b-41d4-a716-446655440000");assert.equal((await kyc.get("alice")).providerProfileId,"550e8400-e29b-41d4-a716-446655440000");assert.equal(await kyc.get("bob"),null);
   await assert.rejects(()=>kyc.reserve({...binding,customerId:"bob"}));await assert.rejects(()=>kyc.attach("alice","550e8400-e29b-41d4-a716-446655440001"));
   await kyc.reserve({...binding,customerId:"bob",identityHash:"other-identity",walletHash:"other-wallet"});await assert.rejects(()=>kyc.attach("bob","550e8400-e29b-41d4-a716-446655440000"));
+  const {D1DestinationStore}=require(join(directory,"tucop/destination-store.js"));const destinationStore=new D1DestinationStore(db,codec);
+  const destination={externalId:"dst_"+"0".repeat(26),currency:"BRL",status:"verified",active:true,confirmedAt:new Date().toISOString(),holder:{name:"Encrypted Test Recipient",bank:"Synthetic Bank",documentLast4:"0000"}};
+  const aliceDestination=await destinationStore.put("alice",destination),bobDestination=await destinationStore.put("bob",destination);assert.notEqual(aliceDestination.id,bobDestination.id);assert.equal(await destinationStore.get("bob",aliceDestination.id),null);
+  const stale=structuredClone(aliceDestination);aliceDestination.version++;aliceDestination.confirmedHash="a".repeat(64);assert.equal(await destinationStore.save(aliceDestination,0),true);stale.version++;assert.equal(await destinationStore.save(stale,0),false);assert.equal((await destinationStore.get("bob",bobDestination.id)).confirmedHash,null);
+  const encryptedDestination=await db.prepare("SELECT encrypted_data FROM ramp_tucop_destinations WHERE id=?1").bind(aliceDestination.id).first();assert.ok(!encryptedDestination.encrypted_data.includes(destination.holder.name));
   console.log("D1 workerd integration passed: encrypted persistence, owner isolation, concurrent idempotency/CAS, atomic audit, webhook dedupe and fair polling under provider failure.");
 } finally {if(proxy)await proxy.dispose();rmSync(directory,{recursive:true,force:true});}

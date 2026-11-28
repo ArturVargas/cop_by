@@ -18,11 +18,18 @@ export function isProvider(value: unknown): value is RampProviderId { return val
 export function parseQuoteRequest(body: unknown, defaultProvider: RampProviderId): QuoteRequest {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new RampError("INVALID_REQUEST", "Se requiere un objeto JSON.");
   const b = body as Record<string, unknown>;
-  const fields = new Set(["provider", "network", "sourceAddress", "amount", "pixKey", "thirdParty", "kycUserId"]);
-  if (Object.keys(b).some(key => !fields.has(key))) throw new RampError("INVALID_REQUEST", "La solicitud contiene campos no admitidos.");
   const provider = b.provider ?? defaultProvider;
+  const fields = new Set(provider === "tucop" ? ["provider","network","sourceAddress","amount","currency","destinationId","returnMemo"] : ["provider", "network", "sourceAddress", "amount", "pixKey", "thirdParty", "kycUserId"]);
+  if (Object.keys(b).some(key => !fields.has(key))) throw new RampError("INVALID_REQUEST", "La solicitud contiene campos no admitidos.");
   if (!isProvider(provider) || (b.network !== "mainnet" && b.network !== "testnet")) throw new RampError("INVALID_REQUEST", "Proveedor o red no válidos.");
   if (typeof b.sourceAddress !== "string" || !StrKey.isValidEd25519PublicKey(b.sourceAddress)) throw new RampError("INVALID_ADDRESS", "Se requiere una cuenta Stellar G válida.");
+  if (provider === "tucop") {
+    if (b.currency !== "BRL" && b.currency !== "COP" && b.currency !== "MXN") throw new RampError("INVALID_CURRENCY","TuCOP pay admite BRL, COP o MXN.");
+    if (typeof b.amount !== "string" || amountToUnits(b.amount,2)<=0n || b.currency==="COP" && amountToUnits(b.amount,2)%100n!==0n) throw new RampError("INVALID_AMOUNT","Indica el monto de destino con hasta dos decimales; COP requiere pesos enteros.");
+    if (typeof b.destinationId!=="string" || !/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(b.destinationId)) throw new RampError("INVALID_DESTINATION","Se requiere un destino propio registrado en COP By.");
+    if (typeof b.returnMemo!=="string" || !/^[\x20-\x7e]{1,28}$/.test(b.returnMemo) || b.returnMemo.trim()!==b.returnMemo) throw new RampError("INVALID_RETURN_MEMO","El memo de devolución requiere de 1 a 28 caracteres ASCII, sin espacios en los extremos.");
+    return {provider,network:b.network,sourceAddress:b.sourceAddress,amount:unitsToAmount(amountToUnits(b.amount,2),2),currency:b.currency,destinationId:b.destinationId,returnMemo:b.returnMemo};
+  }
   if (typeof b.amount !== "string" || amountToUnits(b.amount, 7) <= 0n) throw new RampError("INVALID_AMOUNT", "El monto debe ser mayor a cero.");
   if (typeof b.pixKey !== "string" || !b.pixKey.trim() || b.pixKey.length > 2048 || /[\u0000-\u001f\u007f]/.test(b.pixKey)) throw new RampError("INVALID_PIX_KEY", "Llave PIX no válida.");
   if (typeof b.thirdParty !== "boolean") throw new RampError("INVALID_REQUEST", "Indica explícitamente si el pago es a un tercero.");

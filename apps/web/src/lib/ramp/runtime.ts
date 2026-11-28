@@ -10,9 +10,12 @@ import { RampService } from "./service";
 import { PodsClient } from "./providers/pods-client";
 import { PodsKycService } from "./kyc";
 import { D1KycRepository } from "./kyc-repository";
+import { TucopClient } from "./tucop/client";
+import { TucopDestinations } from "./tucop/destinations";
+import { D1DestinationStore } from "./tucop/destination-store";
 import type { RampProvider, RampProviderId, RampRepository } from "./types";
 
-export type RampRuntime = { service: RampService; repository: RampRepository; providers: Partial<Record<RampProviderId, RampProvider>>; defaultProvider: RampProviderId; kyc?: PodsKycService };
+export type RampRuntime = { service: RampService; repository: RampRepository; providers: Partial<Record<RampProviderId, RampProvider>>; defaultProvider: RampProviderId; kyc?: PodsKycService; tucop?:{client:TucopClient;destinations:TucopDestinations} };
 export async function createRampRuntime(env: Record<string, string | undefined> = process.env, database?: RampDatabase): Promise<RampRuntime> {
   if (!database) {
     try { const context=await getCloudflareContext({async:true}); database=(context.env as unknown as {RAMP_DB?:RampDatabase}).RAMP_DB; } catch { /* Outside Cloudflare, a binding must be supplied explicitly. */ }
@@ -22,13 +25,17 @@ export async function createRampRuntime(env: Record<string, string | undefined> 
   if (!isProvider(defaultProvider)) throw new RampError("INVALID_PROVIDER_CONFIG", "El proveedor ramp no es válido.", 503);
   const codec = new RampCodec(env.RAMP_ENCRYPTION_KEY);
   const repository = new D1RampRepository(database, codec);
+  const tucopEnvironment=env.TUCOPRAMP_ENVIRONMENT??"sandbox";
+  if(tucopEnvironment!=="sandbox"&&tucopEnvironment!=="production")throw new RampError("TUCOP_INVALID_CONFIG","Selecciona sandbox o production para TuCOP.",503);
+  const tucopClient=new TucopClient({apiKey:env.TUCOPRAMP_API_KEY,environment:tucopEnvironment,baseUrl:env.TUCOPRAMP_API_BASE_URL,enabled:env.TUCOPRAMP_ENABLED==="true",webhookSecret:env.TUCOPRAMP_WEBHOOK_SECRET});
+  const destinations=new TucopDestinations(new D1DestinationStore(database,codec),tucopClient,codec);
   const providers: RampRuntime["providers"] = {
     pods: new PodsRampProvider({ apiKey: env.PODS_API_KEY, baseUrl: env.PODS_API_BASE_URL, enabled: env.PODS_STELLAR_ENABLED === "true", stellarToken: env.PODS_STELLAR_TOKEN_IN, webhookSecret: env.PODS_WEBHOOK_SECRET }),
-    tucop: new TucopRampProvider(),
+    tucop: new TucopRampProvider({client:tucopClient,destinations}),
     ...(env.RAMP_ALLOW_MOCK === "true" ? { mock: new MockRampProvider() } : {}),
   };
   const resolve = (id: RampProviderId) => { const provider = providers[id]; if (!provider) throw new RampError("PROVIDER_DISABLED", "El proveedor está deshabilitado.", 503); return provider; };
   if (!providers[defaultProvider]) throw new RampError("INVALID_PROVIDER_CONFIG", "El proveedor predeterminado está deshabilitado.", 503);
   const kyc = new PodsKycService(new D1KycRepository(database), new PodsClient({apiKey:env.PODS_API_KEY,baseUrl:env.PODS_API_BASE_URL}), codec, {enabled:env.PODS_KYC_ENABLED === "true",redirectUrl:env.PODS_KYC_REDIRECT_URL,allowStellar:env.PODS_STELLAR_ENABLED === "true",sandbox:env.PODS_ENVIRONMENT === "sandbox"});
-  return { service: new RampService(repository, resolve, codec), repository, providers, defaultProvider, kyc };
+  return { service: new RampService(repository, resolve, codec), repository, providers, defaultProvider, kyc, tucop:{client:tucopClient,destinations} };
 }

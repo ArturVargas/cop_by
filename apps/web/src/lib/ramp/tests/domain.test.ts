@@ -10,7 +10,7 @@ test("ramp amounts preserve Stellar precision and reject ambiguous input", () =>
 });
 test("PIX requests require checked G addresses, exact amounts and explicit third-party choice", () => {
   const parsed = parseQuoteRequest(request, "pods");
-  assert.equal(parsed.amount, "15"); assert.equal(parsed.thirdParty, true);
+  assert.equal(parsed.amount, "15"); assert.ok(parsed.provider!=="tucop"); assert.equal(parsed.thirdParty, true);
   for (const change of [{ sourceAddress: sourceAddress.slice(0,-1)+"A" }, { thirdParty: undefined }, { network: "base" }, { amount: "0" }, { provider: "unknown" }, { pixKey: "x\nsecret" }, { status: "paid" }]) assert.throws(() => parseQuoteRequest({ ...request, ...change }, "pods"));
 });
 test("provider observations never downgrade paid/refunded or overwrite newer observations", () => {

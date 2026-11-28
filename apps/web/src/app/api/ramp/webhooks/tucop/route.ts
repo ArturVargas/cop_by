@@ -1,0 +1,5 @@
+import { handleRampRequest } from "@/lib/ramp/api";
+
+export const runtime="nodejs";
+export const dynamic="force-dynamic";
+export function POST(request:Request) { return handleRampRequest(request,"tucop_webhook"); }
