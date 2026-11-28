@@ -3,19 +3,19 @@
 Date: 2026-11-27. Branch: codex/backend-pix-pods. Operational details and current resources: ramp-runbook.md.
 
 ## Confirmed scope
-USDC from a Cavos Stellar wallet pays BRL via PIX. Start with Pods, then implement the same provider contract for TuCOP when Stellar is ready. Signing stays on the user's device. This branch builds private integration APIs and an official sandbox runner; it does not expose them directly to browser users or enable live funds.
+USDC from a Cavos Stellar wallet pays BRL via PIX. Pods and TuCOP implement the same operation service; TuCOP uses pay with the integrator’s own verified provider account. Signing stays on the user's device. This branch builds private integration APIs and an official sandbox runner; it does not expose them directly to browser users or enable live funds.
 
 ## Architecture
 Next.js Route Handlers on Cloudflare/OpenNext with Cloudflare D1 persistence. D1 replaces the initial unused ramp Postgres implementation to respect the user's all-Cloudflare hosting choice. No remote ramp data needed migration. The legacy Celo APIs keep their separate Neon dependency.
 
-The provider id is stored on each operation, so changing the default cannot reroute in-flight payments. A small provider interface handles quotes, funding instructions, status and webhook verification. TuCOP explicitly reports unavailable. Mock returns simulation-only instructions with no executable destination. Official pBRL sandbox uses a separate test client because its Base Sepolia chain, token, decimals and settlement mechanics differ from Stellar.
+The provider id is stored on each operation, so changing the default cannot reroute in-flight payments. A small provider interface handles quotes, funding instructions, status and webhook verification. TuCOP prepares a payment only at acceptance; quotes alone never expose executable funding. TuCOP is disabled unless explicitly configured for the matching key/network environment. Mock returns simulation-only instructions with no executable destination. Official pBRL sandbox uses a separate test client because its Base Sepolia chain, token, decimals and settlement mechanics differ from Stellar.
 
 The private API uses server-only Bearer RAMP_INTERNAL_API_TOKEN and a trusted X-Ramp-Customer-Id. This is an administrator integration principal, not end-user authentication. Customer-facing access still requires verified Cavos identity and wallet ownership. Never put the integration token in a browser.
 
 ## Data and sources of truth
-Pods owns KYC, currency capability, limits, quotes and canonical settlement status. Stellar owns actual funding. D1 owns application idempotency, operation snapshots, audit revisions, KYC ownership associations and webhook inbox. A reported hash or ACTION_UPDATE success is not evidence of payout; query the quote status.
+Pods owns KYC, currency capability, limits, quotes and canonical settlement status. Stellar owns actual funding. D1 owns application idempotency, operation snapshots, audit revisions, KYC ownership associations, customer-owned TuCOP destination confirmations and webhook inbox. A reported hash or ACTION_UPDATE success is not evidence of payout; query the quote status.
 
-Stellar money uses exact string/BigInt amounts with seven ledger decimals; BRL has two. pBRL sandbox uses eighteen decimals and independent bounds. Preserve exact quote amount, fees, expiry and destination. Require explicit thirdParty. Do not adapt another network's bytecode into an invented Stellar operation.
+Stellar money uses exact string/BigInt amounts with seven ledger decimals; BRL has two. pBRL sandbox uses eighteen decimals and independent bounds. Preserve exact quote amount, fees, expiry and destination. Pods requires explicit thirdParty; TuCOP pay uses locally owned and explicitly confirmed third-party destinations. Do not adapt another network's bytecode into an invented Stellar operation.
 
 D1 stores encrypted operation snapshots with AES-256-GCM, bound to customer/operation id. HMAC keys derived from the encryption key protect idempotency and identity fingerprints. CAS revisions plus SQLite triggers make snapshot writes and audit appends atomic. Attempt timestamps rotate work queues even when provider queries fail. No runtime DDL or memory fallback.
 
@@ -24,9 +24,21 @@ Hosted KYC reserves a unique customer/applicant/wallet binding before POSTing to
 ## State and event handling
 States: quoting, quoted, awaiting_funding, funding_reported, processing, paid, refunded, expired, failed, needs_attention. Reserve before provider quote creation. Unknown timeout outcomes are retained without automatic duplicate requests. Pending observations cannot reopen funding after processing, and stale observations cannot downgrade paid/refunded states. Later confirmed refunds are allowed.
 
-Canonical fulfilled is paid even if the bank receipt has not arrived. Expose receiptPending, retain original/refund PIX ids independently and keep the first observed values. Failure codes remain separate from creation/transport errors.
+Canonical fulfilled is paid even if the bank receipt has not arrived. For Pods expose receiptPending, retain original/refund PIX ids independently and keep the first observed values. Failure codes remain separate from creation/transport errors.
 
 Signed webhooks are authenticated over raw bytes, replay-bounded and durably deduplicated before acknowledgement. They enqueue canonical status reconciliation. Pods does not automatically retry webhook delivery, so scheduling/polling remains required; this branch does not publish a scheduler.
+
+## TuCOP own-account pay
+
+TuCOP authenticates with a server API key, without per-user Party-Session or Pods KYC. Preflight reads /consumer and /ramp/parties/me to check the key environment, pay and business KYC/terms/currency endorsement. The updated production key passed those read-only checks on 2026-11-27 (pay, KYC approved, terms accepted, pix_offramp approved, unrestricted). This does not establish a completed Stellar payout; no production POST was sent.
+
+Destination registration supports BRL PIX (recipient name and CPF/CNPJ) and COP Bre-B. Each customer has an encrypted D1 mapping and a confirmation tied to the displayed holder revision. Provider-global confirmation does not authorize another customer's payment. The quote uses the destination fiat amount; USDC source/fees are exact strings. MXN remains a shared contract currency, but this slice has no SPEI destination-registration flow.
+
+Acceptance reserves an attempt before POST /ramp/payments and uses payment:<local operation UUID> across retries. Persist the returned provider payment id before its follow-up GET so canonical reads recover without mutable onboarding checks. Only a canonical creating state resumes the exact same POST/key/body, inside the same 23-hour safety window. Unknown outcomes without an id retry only inside a conservative 23-hour window, below TuCOP's 24-hour idempotency retention. Account/trustline and total balance are checked before the first payment creation. No transaction is signed or broadcast by the backend.
+
+Before exposing funding, GET the latest payment. This includes idempotent replays of quote creation. Validate Stellar network, Circle issuer, exact current deposit amount, G address + memo and optional matching M address. Consumer fee/wallet remain separate metadata; a 0x commission wallet is not converted into an invented Stellar payment. Nonfundable statuses can contain null deposit/amount fields and still reconcile safely. Public funding stops after a reported hash, processing or the conservative 28-minute cutoff; provider status remains authoritative for actual cancellation/refund.
+
+TuCOP webhooks use Standard Webhooks, distinct from Pods: raw bytes, decoded whsec_ key, webhook-id/timestamp/signature, signed id match, five-minute replay window. Events only enqueue canonical GET reconciliation; no webhook body directly changes payout state.
 
 ## Readiness boundaries
 - Dedicated D1 staging database and migrations exist. No production Worker deploy or production D1 binding was added.
@@ -37,6 +49,11 @@ Signed webhooks are authenticated over raw bytes, replay-bounded and durably ded
 - Verified Cavos sessions, production secrets/database, scheduled reconciliation and real-corridor verification remain prerequisites for customer-facing payments.
 
 ## Primary sources
+- https://admin.ramp.tucop.xyz/docs/own-provider-account
+- https://admin.ramp.tucop.xyz/docs/payments#usdc-on-stellar
+- https://admin.ramp.tucop.xyz/docs/destinations
+- https://admin.ramp.tucop.xyz/docs/webhooks
+- https://admin.ramp.tucop.xyz/docs/api-reference
 - https://docs.pods.finance/guides/kyc/pods-hosted
 - https://docs.pods.finance/guides/kyc/sandbox
 - https://docs.pods.finance/guides/ramp/overview

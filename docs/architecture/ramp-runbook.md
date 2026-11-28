@@ -6,7 +6,7 @@ This branch adds a private integration backend, not a PIX button or a customer-f
 
 - Branch: codex/backend-pix-pods.
 - Cloudflare staging database: **copby-ramp-staging**, id **1d5067ab-4193-4329-8029-8767ad8833c1**, binding **RAMP_DB** under Wrangler environment **staging**.
-- D1 migrations 0001_ramp.sql and 0002_kyc.sql have been applied to that staging database. No user profiles, payouts or real payment data were inserted remotely.
+- D1 migrations 0001_ramp.sql, 0002_kyc.sql and 0003_tucop_destinations.sql have been applied to that staging database. No user profiles, payouts or real payment data were inserted remotely.
 - No Worker/app deployment or production route change was performed. The existing stellar.copby.money app has not received these backend changes.
 - On 2026-11-27, the configured key was accepted by `GET https://api.pods.finance/api/v1/limits` for the public documentation example address (HTTP 200). Public `/health` also returned 200.
 - An empty `POST /v2/swap/status/sandbox/confirmed` at that host returned **404 NOT_FOUND**. The sandbox runner stopped at preflight with SANDBOX_UNAVAILABLE, before creating any profile/quote. This does not prove that the key itself has a staging or production label; it proves the tested host/key combination did not expose that sandbox route. Pods must supply/enable the appropriate environment.
@@ -46,6 +46,11 @@ All private requests require Authorization: Bearer RAMP_INTERNAL_API_TOKEN. Cust
 | POST | /operations/:id/reconcile | Query canonical provider quote status |
 | POST | /reconcile | Scheduler batch, `{ "limit": 5 }`, maximum 20 |
 | POST | /webhooks/pods | Public only with valid Pods HMAC; durable inbox |
+| GET | /tucop/account?currency=BRL | Read-only own-business readiness; no per-user TuCOP session |
+| POST | /tucop/destinations | Register/reuse owned third-party PIX or Bre-B destination; Idempotency-Key |
+| GET | /tucop/destinations/:id | Refresh holder, status and the customer's confirmation revision |
+| POST | /tucop/destinations/:id/confirm | Confirm displayed holderRevision; Idempotency-Key |
+| POST | /webhooks/tucop | Public only with valid Standard Webhooks signature; durable inbox |
 
 Request bodies are bounded and responses uncached. API errors expose sanitized codes/messages, never raw provider bodies. Plaintext CPF, KYC evidence, bearer verification links, authorization headers and provider URLs with PIX keys must not enter logs.
 
@@ -76,6 +81,54 @@ Keep PODS_STELLAR_ENABLED=false until Pods confirms mainnet availability, KYC wa
 Stellar USDC uses seven ledger decimals. Amounts are strings/BigInt. Quote creation reserves idempotency before the provider call; duplicate normalized inputs reuse the operation and conflicting inputs return 409. A timeout never automatically creates a second quote. A record stuck without a provider quote reference requires operator/provider review. Public quote responses expose funding only after acceptance while unexpired, awaiting funding and without a reported hash.
 
 The live adapter uses GET /v2/swap/quote; no new /bytecode integration or invented Stellar /fulfill API. The exact source and quoted BRL amounts are checked on status responses. BR Codes with provider-calculated source amounts, late repricing and abnormal deposits require explicit future handling before advertising those cases. Third-party payouts are documented for Base/Monad; do not advertise Stellar third-party payments until Pods confirms support.
+
+## TuCOP pay on Stellar
+
+This provider uses COP By's own verified provider account and product pay, not withdraw. Cavos login and Pods KYC are independent; no per-user TuCOP session/OTP is required in this model. Private API identity restrictions above still apply.
+
+On 2026-11-27, after the user replaced the key, production GET /consumer and GET /ramp/parties/me returned 200. The adapter's own readiness check also passed: environment live/production, pay enabled, KYC approved, terms accepted, PIX offramp approved, unrestricted. The previous key's 401 is resolved. No destination, quote, payment or production funding transaction was created during this verification. Neither these reads nor fixture tests prove the Stellar payout corridor is operational.
+
+Server variables:
+
+- TUCOPRAMP_API_KEY: ignored local .env or a server secret, never NEXT_PUBLIC_*.
+- TUCOPRAMP_ENVIRONMENT: sandbox (default) or production; must match the test/live key prefix and authoritative GET /consumer environment.
+- TUCOPRAMP_ENABLED: false by default. Keep disabled until the intended environment and financial test are authorized.
+- TUCOPRAMP_API_BASE_URL: optional; official defaults are https://sandbox.api.ramp.tucop.xyz and https://api.ramp.tucop.xyz. No redirects or plaintext HTTP.
+- TUCOPRAMP_WEBHOOK_SECRET: separate Standard Webhooks whsec_ secret. Do not reuse Pods' secret or the API key.
+
+The user's current key is production; it cannot run sandbox financial scenarios. A test key from TuCOP's sandbox console and a sandbox-linked business are required for those. Local test fixtures never call either provider.
+
+Example destination body for POST /tucop/destinations (synthetic values only):
+
+```json
+{"currency":"BRL","key":"recipient@example.com","ownerName":"Test Recipient","documentNumber":"52998224725"}
+```
+
+BRL requires the recipient's CPF/CNPJ digits (11/14) and full name. COP uses {"currency":"COP","key":"BRE_B_KEY"}, optionally ownerName. No SPEI destination creation is exposed in this slice. Confirm the returned holder explicitly by POSTing {"holderRevision":"REVISION_FROM_THE_DISPLAYED_DESTINATION"} to /tucop/destinations/:id/confirm. Each customer must confirm independently, even if TuCOP already marked its shared destination confirmed. A holder change invalidates local consent.
+
+A TuCOP quote request uses the destination fiat amount, unlike Pods' source USDC input:
+
+```json
+{
+  "provider":"tucop",
+  "network":"testnet",
+  "sourceAddress":"G_ACCOUNT_OF_THE_USER",
+  "amount":"250.00",
+  "currency":"BRL",
+  "destinationId":"LOCAL_OWNED_DESTINATION_UUID",
+  "returnMemo":"copby-return"
+}
+```
+
+Production requires network mainnet; sandbox requires testnet. COP amounts are whole pesos. returnMemo is 1–28 printable ASCII bytes without outer whitespace. Quote acceptance creates the provider payment with quote_id, source_chain stellar, return_address and return_memo. The return account must exist, trust the correct Circle USDC issuer and cover source plus consumer fee before first creation.
+
+The service reserves acceptance before network calls, keeps the exact payment idempotency key/body on retries, and checkpoints the provider id before fetching deposit instructions. A failed follow-up GET cannot lose that id or trigger a new payment. Recover known ids by GET. Only canonical creating resumes the exact same POST/key/body, with the same id checked; unknown outcomes and creating resumption only retry inside 23 hours. Beyond that window, operator/provider review is required rather than a new idempotency key.
+
+Refresh the operation immediately before constructing a client transaction; idempotent quote replays and reads also refresh accepted unfunded payments. Use the exact latest funding.amount and validated network/assetIssuer plus G destination with memo, or the matching memolessDestination alternative. The backend does not build/sign XDR or execute the consumer commission. consumerFeeWallet may be 0x as confirmed by the user; it stays separate metadata. The current G-only P2P helper is insufficient for this payment. A future Cavos payment flow must explicitly support the memo/M destination and a separately reviewed fee flow.
+
+TuCOP deposit amount may change while awaiting_funds without changing the state. Fund only before the exposed cutoff (28 minutes from creation), and never infer expiry/payout from a local timer or reported hash. TuCOP normally cancels unfunded payments after 30 minutes, subject to its chain-read rules. Canonical canceled maps to expired with providerStatus canceled and error_code preserved as failureCode. completed maps to paid and a later refunded is retained. Failed/canceled responses with null deposit/amounts still reconcile. No TuCOP PIX receipt-pending promise is inferred from the Pods schema.
+
+Webhook validation uses HMAC SHA-256 over webhook-id + '.' + webhook-timestamp + '.' + exact raw body, with the base64-decoded whsec_ key and v1 signature entries. Compare the signed payload id, enforce ±5 minutes, deduplicate durably and then fetch canonical status. Register /api/ramp/webhooks/tucop with TuCOP before enabling delivery. Scheduled reconciliation is still required; this branch does not publish the scheduler.
 
 ## Settlement, receipts and webhooks
 
@@ -121,4 +174,6 @@ pnpm --filter web cf:build
 
 D1 tests use an ephemeral local Cloudflare binding, never the remote database. They cover concurrent idempotency/CAS, trigger audit, encrypted snapshots, customer isolation, webhook deduplication, failed-provider queue rotation, identity uniqueness and profile reassignment rejection. An additional local Next/D1 HTTP smoke covered private auth, persisted mock quote, acceptance and cross-customer 404.
 
-Remaining external prerequisites: Pods sandbox access, hosted-KYC enablement/return allowlist, full authenticated sandbox run, Stellar contract validation, verified Cavos session integration, production D1/secrets and scheduled reconciliation. No production Worker deployment or live PIX payment was executed.
+TuCOP local verification covers destination ownership/consent, concurrent acceptance, provider-id checkpoints, bounded recovery, dynamic amount refresh including quote replay, null terminal data, exact Stellar instructions and the published webhook-signature fixture. The updated production key passed a read-only check through the actual adapter and the local HTTP route. Final checks: 53 ramp tests, 22 Stellar tests, local D1 integration, type-check, local Next/D1 HTTP smoke and Cloudflare build passed. No TuCOP financial E2E test ran.
+
+Remaining external prerequisites: TuCOP sandbox key/linked business and controlled Stellar payment validation; Pods sandbox access, hosted-KYC enablement/return allowlist, full authenticated sandbox run, Stellar contract validation, verified Cavos session integration, production D1/secrets and scheduled reconciliation. No production Worker deployment or live PIX payment was executed.
